@@ -130,7 +130,13 @@ class Command(BaseCommand):
                 "is_superuser": True,
             },
         )
-        admin.set_password("demo1234")
+        # The admin password is set ONLY when the account is first created.
+        # Never overwrite it on re-seed: an admin who changed their password
+        # (via Change Password or the admin panel reset) would otherwise be
+        # locked out by the next seed run / deploy. Demo students below keep
+        # their demo1234 reset on re-seed — that is intentional.
+        if admin_created:
+            admin.set_password("demo1234")
         admin.email = "admin@skillswap.demo"
         admin.first_name = "Admin"
         admin.is_staff = True

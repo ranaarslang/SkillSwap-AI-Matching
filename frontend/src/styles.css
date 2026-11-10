@@ -1,25 +1,47 @@
 @import "tailwindcss";
 
 @theme {
-  /* Professional type pairing: Inter for UI + headings, with a robust
+  /* Premium type pairing: Inter for UI + headings, with a robust
      system fallback so the app still looks right if the webfont is
      unreachable. */
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
     Roboto, "Helvetica Neue", Arial, sans-serif;
 
-  /* Brand: indigo #4F46E5 stays the primary accent; the surrounding
-     neutrals are warm and restrained so the product reads corporate,
-     not playful. */
+  /* Brand: indigo #4F46E5 stays the primary accent; a full scale so
+     tints are deliberate, never ad-hoc. Supporting palette is kept to
+     the blue/indigo family + emerald (success) + amber (warning). */
   --color-brand-50: #eef2ff;
   --color-brand-100: #e0e7ff;
-  --color-brand-500: #4f46e5;
-  --color-brand-600: #4338ca;
-  --color-brand-700: #3730a3;
-  --color-brand-900: #1e1b4b;
+  --color-brand-200: #c7d2fe;
+  --color-brand-300: #a5b4fc;
+  --color-brand-400: #818cf8;
+  --color-brand-500: #6366f1;
+  --color-brand-600: #4f46e5;
+  --color-brand-700: #4338ca;
+  --color-brand-800: #3730a3;
+  --color-brand-900: #312e81;
+  --color-brand-950: #1e1b4b;
+
+  --color-ink-950: #0b1220;
   --color-ink-900: #0f172a;
   --color-ink-700: #334155;
   --color-ink-500: #64748b;
-  --color-surface: #f6f7f9;
+  --color-ink-400: #94a3b8;
+  --color-ink-300: #cbd5e1;
+  --color-ink-200: #e2e8f0;
+  --color-ink-100: #f1f5f9;
+  --color-ink-50: #f8fafc;
+
+  --color-surface: #f5f7fb;
+
+  /* Depth tokens — soft, layered shadows (never harsh). */
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.05), 0 1px 3px rgb(15 23 42 / 0.06);
+  --shadow-lift: 0 2px 4px rgb(15 23 42 / 0.05), 0 12px 28px -10px rgb(15 23 42 / 0.18);
+  --shadow-pop: 0 24px 48px -16px rgb(15 23 42 / 0.28), 0 4px 12px rgb(15 23 42 / 0.08);
+  --shadow-brand: 0 1px 2px rgb(79 70 229 / 0.35), 0 8px 18px -6px rgb(79 70 229 / 0.45);
+
+  --radius-card: 1rem;
+  --radius-panel: 1.25rem;
 }
 
 /* NOTE: there is intentionally NO rule anywhere in this file that hides
@@ -30,11 +52,19 @@
 html {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  font-feature-settings: "cv11", "ss01";
 }
 
 body {
   background-color: var(--color-surface);
+  /* Layered app surface: a whisper of brand tint at the top corners so
+     the page never reads as flat grey. Fixed so it doesn't scroll. */
+  background-image:
+    radial-gradient(60rem 30rem at 88% -12%, rgb(79 70 229 / 0.08), transparent 60%),
+    radial-gradient(46rem 24rem at -12% -4%, rgb(14 165 233 / 0.05), transparent 55%);
+  background-attachment: fixed;
   color: var(--color-ink-900);
 }
 
@@ -46,4 +76,283 @@ button:focus-visible,
 a:focus-visible {
   outline: 2px solid var(--color-brand-500);
   outline-offset: 1px;
+}
+
+@layer components {
+  /* ---- Surfaces -------------------------------------------------------- */
+  .card {
+    border-radius: var(--radius-card);
+    border: 1px solid rgb(226 232 240 / 0.9);
+    background-color: #fff;
+    box-shadow: var(--shadow-card);
+  }
+  .card-interactive {
+    border-radius: var(--radius-card);
+    border: 1px solid rgb(226 232 240 / 0.9);
+    background-color: #fff;
+    box-shadow: var(--shadow-card);
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  }
+  .card-interactive:hover {
+    transform: translateY(-2px);
+    border-color: rgb(199 210 254 / 0.9);
+    box-shadow: var(--shadow-lift);
+  }
+
+  /* ---- Buttons --------------------------------------------------------- */
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 0.65rem;
+    background: linear-gradient(180deg, #6366f1 0%, #4f46e5 100%);
+    padding: 0.625rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #fff;
+    box-shadow: var(--shadow-brand);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+  }
+  .btn-primary:hover:not(:disabled) {
+    transform: translateY(-1px);
+    filter: brightness(1.04);
+  }
+  .btn-primary:active:not(:disabled) {
+    transform: translateY(0);
+  }
+  .btn-primary:disabled {
+    opacity: 0.6;
+  }
+  .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 0.65rem;
+    border: 1px solid #e2e8f0;
+    background-color: #fff;
+    padding: 0.625rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #334155;
+    box-shadow: var(--shadow-card);
+    transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+  }
+  .btn-secondary:hover:not(:disabled) {
+    background-color: #f8fafc;
+    border-color: #cbd5e1;
+    transform: translateY(-1px);
+  }
+  .btn-secondary:disabled {
+    opacity: 0.5;
+  }
+  .btn-admin {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 0.65rem;
+    background: linear-gradient(180deg, #10b981 0%, #059669 100%);
+    padding: 0.625rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #fff;
+    box-shadow: 0 1px 2px rgb(16 185 129 / 0.35), 0 8px 18px -6px rgb(16 185 129 / 0.45);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+  }
+  .btn-admin:hover:not(:disabled) {
+    transform: translateY(-1px);
+    filter: brightness(1.06);
+  }
+  .btn-admin:disabled {
+    opacity: 0.6;
+  }
+  .btn-admin-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 0.65rem;
+    border: 1px solid #334155;
+    background-color: #1e293b;
+    padding: 0.625rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #e2e8f0;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+    transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+  }
+  .btn-admin-secondary:hover:not(:disabled) {
+    background-color: #334155;
+    border-color: #475569;
+    transform: translateY(-1px);
+  }
+  .btn-admin-secondary:disabled {
+    opacity: 0.5;
+  }
+
+  /* ---- Forms ----------------------------------------------------------- */
+  .input {
+    width: 100%;
+    border-radius: 0.65rem;
+    border: 1px solid #cbd5e1;
+    background-color: #fff;
+    padding: 0.625rem 0.875rem;
+    font-size: 0.875rem;
+    color: #0f172a;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .input::placeholder {
+    color: #94a3b8;
+  }
+  .input:focus {
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgb(99 102 241 / 0.18);
+    outline: none;
+  }
+  .input-dark {
+    width: 100%;
+    border-radius: 0.65rem;
+    border: 1px solid #334155;
+    background-color: #0f172a;
+    padding: 0.625rem 0.875rem;
+    font-size: 0.875rem;
+    color: #f1f5f9;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .input-dark::placeholder {
+    color: #64748b;
+  }
+  .input-dark:focus {
+    border-color: #10b981;
+    box-shadow: 0 0 0 3px rgb(16 185 129 / 0.22);
+    outline: none;
+  }
+
+  /* ---- Type ------------------------------------------------------------ */
+  .eyebrow {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #6366f1;
+  }
+  .page-title {
+    font-size: 1.5rem;
+    line-height: 1.2;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: #0f172a;
+  }
+  @media (min-width: 640px) {
+    .page-title {
+      font-size: 1.875rem;
+    }
+  }
+  .page-sub {
+    margin-top: 0.25rem;
+    font-size: 0.875rem;
+    line-height: 1.55;
+    color: #64748b;
+  }
+
+  /* ---- Brand ----------------------------------------------------------- */
+  .logo-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.75rem;
+    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 55%, #7c3aed 100%);
+    color: #fff;
+    box-shadow: 0 4px 12px -2px rgb(79 70 229 / 0.5), inset 0 1px 0 rgb(255 255 255 / 0.25);
+  }
+  .grad-text {
+    background: linear-gradient(90deg, #4f46e5, #7c3aed);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* ---- Stats ----------------------------------------------------------- */
+  .stat-card {
+    position: relative;
+    overflow: hidden;
+    border-radius: var(--radius-card);
+    border: 1px solid rgb(226 232 240 / 0.9);
+    background-color: #fff;
+    box-shadow: var(--shadow-card);
+    padding: 1rem;
+    text-align: center;
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+  }
+  .stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lift);
+  }
+  .stat-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 3px;
+    background: linear-gradient(90deg, #6366f1, #7c3aed, #0ea5e9);
+    opacity: 0.9;
+  }
+
+  /* ---- Admin console scope ------------------------------------------- */
+  /* Everything inside .admin-console is the dark admin identity: dark
+     surfaces, emerald accent, light text. The student app never uses
+     this scope, so the two looks can never bleed into each other. */
+  .admin-console .card {
+    background-color: #0f172a;
+    border-color: #1e293b;
+    color: #e2e8f0;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.35), 0 1px 3px rgb(0 0 0 / 0.3);
+  }
+  .admin-console .stat-card {
+    background-color: #0f172a;
+    border-color: #1e293b;
+    color: #e2e8f0;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.35), 0 1px 3px rgb(0 0 0 / 0.3);
+  }
+  .admin-console .stat-card::before {
+    background: linear-gradient(90deg, #10b981, #14b8a6, #0ea5e9);
+  }
+  .admin-console .page-title {
+    color: #f1f5f9;
+  }
+  .admin-console .page-sub {
+    color: #94a3b8;
+  }
+  .admin-console .eyebrow {
+    color: #34d399;
+  }
+
+  /* ---- Motion ---------------------------------------------------------- */
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.99);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+  .animate-rise {
+    animation: rise-in 0.22s ease both;
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  .animate-fade {
+    animation: fade-in 0.18s ease both;
+  }
 }

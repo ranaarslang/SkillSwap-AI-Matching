@@ -53,9 +53,9 @@ export default function SkillPicker({ id, label, hint, selected, onChange, tone 
 
   const chipOn =
     tone === 'emerald'
-      ? 'bg-emerald-600 text-white border-emerald-600'
-      : 'bg-indigo-600 text-white border-indigo-600'
-  const chipOff = 'bg-white text-slate-700 border-slate-300 hover:border-indigo-400 hover:text-indigo-700'
+      ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-600 shadow-sm'
+      : 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white border-indigo-600 shadow-sm'
+  const chipOff = 'bg-white text-slate-700 border-slate-300 shadow-sm hover:border-indigo-400 hover:text-indigo-700 hover:shadow'
 
   return (
     <fieldset>
@@ -132,13 +132,13 @@ export default function SkillPicker({ id, label, hint, selected, onChange, tone 
             }}
             placeholder="e.g. Calligraphy"
             maxLength={120}
-            className="flex-1 min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="input flex-1 min-w-0"
           />
           <button
             type="button"
             onClick={addCustom}
             disabled={!custom.trim()}
-            className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+            className="btn-secondary shrink-0 disabled:opacity-40"
           >
             Add
           </button>

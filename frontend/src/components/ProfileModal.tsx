@@ -49,26 +49,27 @@ export default function ProfileModal({ profile, isMatch, onClose, onMessage, hid
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-0 sm:items-center sm:p-6"
+      className="animate-fade fixed inset-0 z-50 flex items-end justify-center bg-slate-950/60 p-0 backdrop-blur-sm sm:items-center sm:p-6"
       role="dialog"
       aria-modal="true"
       aria-label={`Profile of ${displayName(profile.user)}`}
       onClick={onClose}
     >
       <div
-        className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white shadow-xl sm:rounded-2xl"
+        className="animate-rise max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-[1.25rem] bg-white shadow-pop sm:rounded-panel"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="relative bg-indigo-950 px-6 pb-6 pt-5 text-white">
+        <div className="relative overflow-hidden bg-gradient-to-br from-indigo-950 via-indigo-900 to-violet-950 px-6 pb-6 pt-5 text-white">
+          <div className="pointer-events-none absolute -right-10 -top-16 h-48 w-48 rounded-full bg-indigo-500/30 blur-3xl" aria-hidden />
           <button
             onClick={onClose}
             aria-label="Close profile"
-            className="absolute right-4 top-4 rounded-lg p-1.5 text-indigo-200 hover:bg-white/10 hover:text-white"
+            className="absolute right-4 top-4 z-10 rounded-lg p-1.5 text-indigo-200 hover:bg-white/10 hover:text-white"
           >
             <IconClose className="h-5 w-5" />
           </button>
-          <div className="flex items-start gap-4">
+          <div className="relative flex items-start gap-4">
             <Avatar user={profile.user} color={profile.avatar_color} size="lg" />
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
@@ -83,7 +84,7 @@ export default function ProfileModal({ profile, isMatch, onClose, onMessage, hid
               </div>
             </div>
           </div>
-          <div className="mt-4 flex flex-wrap gap-x-5 gap-y-1 text-sm text-indigo-100">
+          <div className="relative mt-4 flex flex-wrap gap-x-5 gap-y-1 text-sm text-indigo-100">
             {profile.location && (
               <span className="inline-flex items-center gap-1.5">
                 <IconPin className="h-4 w-4" /> {profile.location}
@@ -98,7 +99,7 @@ export default function ProfileModal({ profile, isMatch, onClose, onMessage, hid
 
         <div className="space-y-5 px-6 py-5">
           {why.length > 0 && (
-            <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 ring-1 ring-inset ring-emerald-100">
+            <p className="rounded-xl bg-emerald-50/80 px-3.5 py-2.5 text-sm font-medium leading-relaxed text-emerald-800 ring-1 ring-inset ring-emerald-100">
               {why.join(' · ')}
             </p>
           )}
@@ -149,7 +150,7 @@ export default function ProfileModal({ profile, isMatch, onClose, onMessage, hid
             ) : (
               <ul className="mt-2 space-y-2">
                 {reviews.slice(0, 3).map((r) => (
-                  <li key={r.id} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <li key={r.id} className="card px-3.5 py-2.5">
                     <p className="text-sm font-semibold text-amber-500">{'★'.repeat(r.rating_stars)}{'☆'.repeat(5 - r.rating_stars)}</p>
                     {r.feedback_text && <p className="mt-0.5 text-sm text-slate-600">{r.feedback_text}</p>}
                   </li>
@@ -161,13 +162,13 @@ export default function ProfileModal({ profile, isMatch, onClose, onMessage, hid
           <div className="flex gap-3 pt-1">
             <button
               onClick={() => onMessage(profile)}
-              className="flex-1 rounded-lg bg-indigo-600 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700"
+              className="btn-primary flex-1"
             >
               Message {displayName(profile.user).split(' ')[0]}
             </button>
             <button
               onClick={onClose}
-              className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              className="btn-secondary"
             >
               Close
             </button>

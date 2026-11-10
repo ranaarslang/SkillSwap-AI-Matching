@@ -115,11 +115,12 @@ export default function ChatHub(props: Props) {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Chat &amp; Scheduler Hub</h1>
+        <p className="eyebrow">Messages &amp; Scheduling</p>
+        <h1 className="page-title mt-1">Chat &amp; Scheduler Hub</h1>
         <p className="text-sm text-slate-500">Message your matches, then lock in a swap session.</p>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="card overflow-hidden">
         <div className="grid md:grid-cols-[300px_1fr] min-h-[480px]">
           {/* Conversation list */}
           <aside className={`border-b md:border-b-0 md:border-r border-slate-200 ${selectedPeer ? 'hidden md:block' : ''}`}>
@@ -130,7 +131,7 @@ export default function ChatHub(props: Props) {
                 onChange={(e) => setFilter(e.target.value)}
                 placeholder="Search chats by name or skill…"
                 aria-label="Search conversations"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="input"
               />
             </div>
             {filtered.length === 0 ? (
@@ -212,7 +213,7 @@ export default function ChatHub(props: Props) {
                       const mine = m.is_mine || m.sender.id === props.currentUserId
                       return (
                         <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                          <div className={`max-w-[75%] rounded-xl px-3.5 py-2 text-sm ${mine ? 'bg-indigo-600 text-white rounded-br-sm' : 'bg-slate-100 text-slate-800 rounded-bl-sm'}`}>
+                          <div className={`max-w-[75%] rounded-xl px-3.5 py-2 text-sm ${mine ? 'bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-md rounded-br-sm' : 'bg-white text-slate-800 ring-1 ring-slate-200 shadow-sm rounded-bl-sm'}`}>
                             <p className="whitespace-pre-wrap break-words">{m.body}</p>
                             <p className={`text-[11px] mt-1 ${mine ? 'text-indigo-200' : 'text-slate-400'}`}>
                               {new Date(m.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
@@ -233,9 +234,9 @@ export default function ChatHub(props: Props) {
                     onChange={(e) => setDraft(e.target.value)}
                     placeholder={`Message ${displayName(selectedPeer)}…`}
                     aria-label="Message"
-                    className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="input flex-1 min-w-0"
                   />
-                  <button type="submit" disabled={sending || !draft.trim()} className="rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2">
+                  <button type="submit" disabled={sending || !draft.trim()} className="btn-primary">
                     {sending ? 'Sending…' : 'Send'}
                   </button>
                 </form>
@@ -252,7 +253,7 @@ export default function ChatHub(props: Props) {
                         value={schedDate}
                         onChange={(e) => setSchedDate(e.target.value)}
                         required
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="input"
                       />
                     </div>
                     <div>
@@ -261,7 +262,7 @@ export default function ChatHub(props: Props) {
                         id="sched-duration"
                         value={schedDuration}
                         onChange={(e) => setSchedDuration(e.target.value)}
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="input"
                       >
                         {DURATION_OPTIONS.map((o) => (
                           <option key={o} value={o}>{o}</option>
@@ -288,7 +289,7 @@ export default function ChatHub(props: Props) {
           <div role="alert" className="mb-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2">{sessionActionError}</div>
         )}
         {mySessions.length === 0 ? (
-          <p className="text-sm text-slate-500 bg-white rounded-xl border border-slate-200 p-4">
+          <p className="card p-4 text-sm text-slate-500">
             No sessions yet — pick a date above with a chat partner to schedule your first swap.
           </p>
         ) : (
@@ -297,7 +298,7 @@ export default function ChatHub(props: Props) {
               const other = otherPerson(s, props.currentUserId)
               const iAmPartnerTwo = s.partner_two.id === props.currentUserId
               return (
-                <article key={s.id} className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+                <article key={s.id} className="card p-5">
                   <div className="flex items-start gap-3">
                     <Avatar user={other} color={props.peerProfiles.get(other.id)?.avatar_color} />
                     <div className="min-w-0 flex-1">
@@ -315,7 +316,7 @@ export default function ChatHub(props: Props) {
                       <button onClick={() => setSessionStatus(s, 'CANCELLED')} className="rounded-lg border border-red-300 text-red-700 hover:bg-red-50 text-sm font-semibold px-4 py-2">Cancel</button>
                     )}
                     {s.session_status === 'ACCEPTED' && (
-                      <button onClick={() => setSessionStatus(s, 'COMPLETED')} className="rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2">Mark complete</button>
+                      <button onClick={() => setSessionStatus(s, 'COMPLETED')} className="btn-primary">Mark complete</button>
                     )}
                     {s.session_status === 'PENDING' && !iAmPartnerTwo && (
                       <span className="text-xs text-slate-500 self-center">Waiting for {displayName(other)} to accept.</span>

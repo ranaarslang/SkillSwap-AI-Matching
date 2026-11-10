@@ -6,7 +6,7 @@ import ChatHub from './components/ChatHub'
 import FeedbackHub from './components/FeedbackHub'
 import AdminPanel from './components/AdminPanel'
 import ProfileModal from './components/ProfileModal'
-import { Avatar, IconChat, IconLogout, IconShield, IconSpark, IconStar, IconSwap, IconUser } from './components/ui'
+import { Avatar, IconChat, IconLogout, IconShield, IconSpark, IconStar, IconUser, LogoMark } from './components/ui'
 import {
   api,
   ApiError,
@@ -42,6 +42,7 @@ export default function App() {
     }
   })
   const [authed, setAuthed] = useState<boolean>(() => !!getAccessToken())
+  const [adminLogin, setAdminLogin] = useState<boolean>(() => window.location.hash === '#/admin-login')
   const [tab, setTab] = useState<Tab>('dashboard')
   const [searchQuery, setSearchQuery] = useState('')
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -106,6 +107,9 @@ export default function App() {
     clearAuth()
     setUser(null)
     setAuthed(false)
+    // Leaving the admin login page returns to the normal student login.
+    if (window.location.hash === '#/admin-login') window.location.hash = ''
+    setAdminLogin(false)
     setProfile(null)
     setMatches([])
     setCommunity([])
@@ -123,6 +127,13 @@ export default function App() {
     window.addEventListener('skillswap:unauthorized', onUnauthorized)
     return () => window.removeEventListener('skillswap:unauthorized', onUnauthorized)
   }, [doLogout])
+
+  // Dedicated admin login lives at #/admin-login (no signup there).
+  useEffect(() => {
+    const onHash = () => setAdminLogin(window.location.hash === '#/admin-login')
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
 
   // Load data + open the live-chat socket after login
   useEffect(() => {
@@ -153,10 +164,12 @@ export default function App() {
     }
   }, [authed, loadAll, refreshConversations])
 
-  function handleAuthed(u: User) {
+  function handleAuthed(u: User, opts?: { adminLogin?: boolean }) {
     setUser(u)
     setAuthed(true)
-    setTab('dashboard')
+    // Staff signing in through the dedicated admin login page land
+    // straight on the Admin Panel; everyone else lands on the dashboard.
+    setTab(opts?.adminLogin && u.is_staff ? 'admin' : 'dashboard')
   }
 
   async function handleLogout() {
@@ -212,35 +225,65 @@ export default function App() {
   // Staff users get the Admin entry; everyone else never sees it.
   const visibleTabs: TabDef[] = user?.is_staff ? [...TABS, ADMIN_TAB] : TABS
 
+  // The admin area is a different product surface: a dark console with an
+  // emerald accent, so it can never be mistaken for the student app.
+  const isAdminView = tab === 'admin' && !!user?.is_staff
+
   if (!authed || !user) {
-    return <AuthScreen onAuthed={handleAuthed} />
+    return <AuthScreen variant={adminLogin ? 'admin' : undefined} onAuthed={handleAuthed} />
   }
 
   return (
-    <div className="min-h-screen bg-surface">
+    <div
+      className={`min-h-screen ${isAdminView ? 'bg-slate-950 text-slate-200' : ''}`}
+      style={isAdminView ? { backgroundImage: 'radial-gradient(50rem 24rem at 85% -10%, rgba(16,185,129,0.10), transparent 60%)' } : undefined}
+    >
       {/* Top bar — flex-wrap so the search input stays visible on phone widths */}
-      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur">
+      <header
+        className={`sticky top-0 z-40 border-b backdrop-blur ${
+          isAdminView
+            ? 'border-slate-800 bg-slate-950/95 shadow-[0_1px_12px_rgba(0,0,0,0.45)]'
+            : 'border-slate-200/80 bg-white/90 shadow-[0_1px_12px_rgba(15,23,42,0.06)]'
+        }`}
+      >
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3">
-          <button onClick={() => setTab('dashboard')} className="flex shrink-0 items-center gap-2.5 text-left" aria-label="Skill Swap Platform with AI Matching — go to dashboard">
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-sm">
-              <IconSwap className="h-5 w-5" />
-            </span>
-            <span className="leading-tight">
-              <span className="block text-[15px] font-bold tracking-tight text-slate-900">Skill Swap Platform</span>
-              <span className="block text-[11px] font-semibold uppercase tracking-wider text-indigo-600">with AI Matching</span>
-            </span>
-          </button>
-          <input
-            type="search"
-            value={searchQuery}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            placeholder="Search people, skills…"
-            aria-label="Search matches"
-            className="search min-w-[160px] flex-1 rounded-lg border border-slate-300 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
+          {isAdminView ? (
+            <button onClick={() => setTab('dashboard')} className="flex shrink-0 items-center gap-2.5 text-left" aria-label="Admin Console — back to student app">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/30">
+                <IconShield className="h-5 w-5" />
+              </span>
+              <span className="leading-tight">
+                <span className="block text-[15px] font-extrabold tracking-tight text-white">Admin Console</span>
+                <span className="block text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-400">Skill Swap Platform</span>
+              </span>
+            </button>
+          ) : (
+            <button onClick={() => setTab('dashboard')} className="flex shrink-0 items-center gap-2.5 text-left" aria-label="Skill Swap Platform with AI Matching — go to dashboard">
+              <LogoMark className="h-9 w-9" />
+              <span className="leading-tight">
+                <span className="block text-[15px] font-extrabold tracking-tight text-slate-900">Skill Swap <span className="grad-text">Platform</span></span>
+                <span className="block text-[11px] font-bold uppercase tracking-[0.14em] text-indigo-600">with AI Matching</span>
+              </span>
+            </button>
+          )}
+          {!isAdminView && (
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              placeholder="Search people, skills…"
+              aria-label="Search matches"
+              className="search min-w-[160px] flex-1 rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:outline-none focus:ring-4 focus:ring-indigo-500/15"
+            />
+          )}
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <Avatar user={user} color={profile?.avatar_color} size="sm" />
-            <span className="hidden text-sm font-semibold text-slate-700 sm:block">{displayName(user)}</span>
+            <span className={`hidden text-sm font-semibold sm:block ${isAdminView ? 'text-slate-200' : 'text-slate-700'}`}>{displayName(user)}</span>
+            {isAdminView && (
+              <span className="hidden rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-emerald-300 ring-1 ring-inset ring-emerald-500/30 sm:block">
+                Staff
+              </span>
+            )}
           </div>
         </div>
       </header>
@@ -250,15 +293,23 @@ export default function App() {
         <nav className="hidden w-64 shrink-0 md:block" aria-label="Main">
           <div className="sticky top-[76px] space-y-6">
             <div>
-              <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Menu</p>
+              <p className={`mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider ${isAdminView ? 'text-emerald-400/80' : 'text-slate-400'}`}>
+                {isAdminView ? 'Console' : 'Menu'}
+              </p>
               <ul className="space-y-1">
                 {visibleTabs.map((t) => (
                   <li key={t.id}>
                     <button
                       onClick={() => setTab(t.id)}
                       aria-current={tab === t.id ? 'page' : undefined}
-                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
-                        tab === t.id ? 'bg-indigo-50 text-indigo-700 shadow-sm ring-1 ring-inset ring-indigo-100' : 'text-slate-600 hover:bg-white hover:text-slate-900'
+                      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-all ${
+                        tab === t.id
+                          ? isAdminView
+                            ? 'bg-emerald-500/15 text-emerald-300 shadow-sm ring-1 ring-inset ring-emerald-500/30'
+                            : 'bg-gradient-to-r from-indigo-50 to-violet-50 text-indigo-700 shadow-sm ring-1 ring-inset ring-indigo-100'
+                          : isAdminView
+                            ? 'text-slate-400 hover:bg-white/5 hover:text-slate-100'
+                            : 'text-slate-600 hover:bg-white hover:text-slate-900 hover:shadow-sm'
                       }`}
                     >
                       <t.Icon className="h-5 w-5 shrink-0" />
@@ -271,34 +322,58 @@ export default function App() {
                 ))}
               </ul>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            {isAdminView && (
+              <button
+                onClick={() => setTab('dashboard')}
+                className="flex w-full items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm font-semibold text-slate-300 shadow-sm transition-colors hover:border-slate-700 hover:text-white"
+              >
+                ← Back to student app
+              </button>
+            )}
+            <div className={isAdminView ? 'rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-lg' : 'card p-4'}>
               <div className="flex items-center gap-3">
                 <Avatar user={user} color={profile?.avatar_color} />
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-bold text-slate-900">{displayName(user)}</p>
-                  <p className="truncate text-xs text-slate-500">{user.email}</p>
+                  <p className={`truncate text-sm font-bold ${isAdminView ? 'text-white' : 'text-slate-900'}`}>{displayName(user)}</p>
+                  <p className={`truncate text-xs ${isAdminView ? 'text-slate-400' : 'text-slate-500'}`}>{user.email}</p>
                   {profile && (
-                    <p className="mt-0.5 text-xs font-semibold text-slate-500">
-                      ★ {profile.trust_score} trust{profile.verified_badge ? ' · ✓ Verified' : ''}
+                    <p className={`mt-0.5 text-xs font-semibold ${isAdminView ? 'text-slate-400' : 'text-slate-500'}`}>
+                      <span className="text-amber-500">★</span> {profile.trust_score} trust{profile.verified_badge ? ' · ✓ Verified' : ''}
                     </p>
                   )}
                 </div>
               </div>
+              {profile && (
+                <div className="mt-3">
+                  <div className={`flex justify-between text-[11px] font-semibold ${isAdminView ? 'text-slate-500' : 'text-slate-400'}`}>
+                    <span>Trust score</span>
+                    <span className={isAdminView ? 'text-slate-300' : 'text-slate-600'}>{profile.trust_score} / 100</span>
+                  </div>
+                  <div className={`mt-1 h-1.5 overflow-hidden rounded-full ${isAdminView ? 'bg-slate-800' : 'bg-slate-100'}`}>
+                    <div
+                      className={`h-full rounded-full transition-all ${isAdminView ? 'bg-gradient-to-r from-emerald-500 to-teal-400' : 'bg-gradient-to-r from-indigo-500 via-violet-500 to-sky-500'}`}
+                      style={{ width: `${Math.max(4, Math.min(100, profile.trust_score))}%` }}
+                    />
+                  </div>
+                </div>
+              )}
               <button
                 onClick={handleLogout}
-                className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                className={isAdminView ? 'btn-admin-secondary mt-4 w-full' : 'btn-secondary mt-4 w-full'}
               >
                 <IconLogout className="h-4 w-4" /> Log out
               </button>
             </div>
-            <p className="px-3 text-[11px] leading-relaxed text-slate-400">
-              Skill Swap Platform with AI Matching — teach what you know, learn what you don&apos;t.
+            <p className={`px-3 text-[11px] leading-relaxed ${isAdminView ? 'text-slate-500' : 'text-slate-400'}`}>
+              {isAdminView
+                ? 'Admin Console — staff only. Every action here is an admin action.'
+                : 'Skill Swap Platform with AI Matching — teach what you know, learn what you don’t.'}
             </p>
           </div>
         </nav>
 
         {/* Main content */}
-        <main className="min-w-0 flex-1">
+        <main className={`min-w-0 flex-1 ${isAdminView ? 'admin-console' : ''}`}>
           {toast && (
             <div role="status" className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-700">
               {toast}
@@ -370,14 +445,29 @@ export default function App() {
       )}
 
       {/* Bottom nav (mobile) */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white md:hidden" aria-label="Main mobile">
+      <nav
+        className={`fixed inset-x-0 bottom-0 z-40 border-t backdrop-blur md:hidden ${
+          isAdminView
+            ? 'border-slate-800 bg-slate-950/95 shadow-[0_-4px_20px_rgba(0,0,0,0.4)]'
+            : 'border-slate-200/80 bg-white/95 shadow-[0_-4px_20px_rgba(15,23,42,0.07)]'
+        }`}
+        aria-label="Main mobile"
+      >
         <ul className={`grid ${visibleTabs.length === 5 ? 'grid-cols-5' : 'grid-cols-4'}`}>
           {visibleTabs.map((t) => (
             <li key={t.id}>
               <button
                 onClick={() => setTab(t.id)}
                 aria-current={tab === t.id ? 'page' : undefined}
-                className={`relative flex w-full flex-col items-center gap-0.5 py-3 text-[11px] font-semibold ${tab === t.id ? 'text-indigo-600' : 'text-slate-500'}`}
+                className={`relative flex w-full flex-col items-center gap-0.5 py-3 text-[11px] font-semibold ${
+                  tab === t.id
+                    ? isAdminView
+                      ? 'text-emerald-400'
+                      : 'text-indigo-600'
+                    : isAdminView
+                      ? 'text-slate-500'
+                      : 'text-slate-500'
+                }`}
               >
                 <t.Icon className="h-5 w-5" />
                 {t.short}

@@ -175,6 +175,33 @@ def logout(request):
     return Response({"detail": "Logged out."}, status=status.HTTP_200_OK)
 
 
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def change_password(request):
+    """Let a logged-in user change their OWN password.
+
+    The admin panel's reset-password is for fixing other users' accounts;
+    this is the self-service route (used by the Profile "Change Password"
+    section, including the admin changing their own password). The new
+    password takes effect immediately for the next login.
+    """
+    current = request.data.get("current_password") or ""
+    new_password = request.data.get("new_password") or ""
+    if not request.user.check_password(current):
+        return Response(
+            {"detail": "Your current password is incorrect."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if len(new_password) < 6:
+        return Response(
+            {"detail": "New password must be at least 6 characters."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    request.user.set_password(new_password)
+    request.user.save(update_fields=["password"])
+    return Response({"detail": "Password changed."}, status=status.HTTP_200_OK)
+
+
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def health(request):

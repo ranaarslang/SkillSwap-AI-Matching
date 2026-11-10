@@ -11,6 +11,7 @@ urlpatterns = [
     path("auth/login/", views.login, name="login"),
     path("auth/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("auth/logout/", views.logout, name="logout"),
+    path("auth/change-password/", views.change_password, name="change_password"),
     # Profiles
     path("profile/me/", views.profile_me, name="profile_me"),
     path("profiles/<int:user_id>/", views.profile_detail, name="profile_detail"),

@@ -51,12 +51,21 @@ export const IconShield = ({ className }: { className?: string }) => (
 )
 
 // ---- Primitives ------------------------------------------------------------
+export function LogoMark({ className = 'h-9 w-9' }: { className?: string }) {
+  const iconCls = className.includes('h-11') ? 'h-6 w-6' : className.includes('h-8') ? 'h-4 w-4' : 'h-5 w-5'
+  return (
+    <span className={`logo-mark shrink-0 ${className}`} aria-hidden>
+      <IconSwap className={iconCls} />
+    </span>
+  )
+}
+
 export function Avatar({ user, color, size = 'md' }: { user: User; color?: string; size?: 'sm' | 'md' | 'lg' }) {
   const cls = size === 'lg' ? 'h-16 w-16 text-xl' : size === 'sm' ? 'h-8 w-8 text-xs' : 'h-11 w-11 text-sm'
   return (
     <div
-      className={`${cls} shrink-0 rounded-full flex items-center justify-center font-bold text-white ring-2 ring-white shadow-sm`}
-      style={{ backgroundColor: color || '#4F46E5' }}
+      className={`${cls} shrink-0 rounded-full flex items-center justify-center font-bold text-white ring-2 ring-white shadow-md`}
+      style={{ backgroundColor: color || '#4F46E5', boxShadow: '0 4px 12px -2px rgb(15 23 42 / 0.25), inset 0 -10px 18px rgb(0 0 0 / 0.18)' }}
       aria-hidden
     >
       {initials(user)}
@@ -65,29 +74,73 @@ export function Avatar({ user, color, size = 'md' }: { user: User; color?: strin
 }
 
 export function Chip({ children, tone = 'indigo' }: { children: React.ReactNode; tone?: 'indigo' | 'emerald' }) {
-  const cls = tone === 'emerald' ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' : 'bg-indigo-50 text-indigo-700 ring-indigo-600/20'
-  return <span className={`inline-block rounded-full ring-1 ring-inset ${cls} text-xs font-medium px-2.5 py-1`}>{children}</span>
+  const cls = tone === 'emerald' ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/25' : 'bg-indigo-50 text-indigo-700 ring-indigo-600/25'
+  return <span className={`inline-block rounded-full ring-1 ring-inset ${cls} text-xs font-semibold px-2.5 py-1 shadow-sm`}>{children}</span>
+}
+
+/** Prominent match-score ring (SVG): the score is the hero of a match card. */
+export function ScoreRing({ score, size = 68 }: { score: number; size?: number }) {
+  const r = 28
+  const c = 2 * Math.PI * r
+  const pct = Math.max(0, Math.min(100, score))
+  const offset = c * (1 - pct / 100)
+  const gradId = `score-grad-${score >= 75 ? 'hi' : score >= 60 ? 'mid' : 'lo'}`
+  const stops =
+    score >= 75
+      ? [['#7c3aed', '0%'], ['#4f46e5', '100%']]
+      : score >= 60
+        ? [['#6366f1', '0%'], ['#4f46e5', '100%']]
+        : [['#0ea5e9', '0%'], ['#6366f1', '100%']]
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }} role="img" aria-label={`${score}% match`}>
+      <svg width={size} height={size} viewBox="0 0 68 68" className="-rotate-90">
+        <defs>
+          <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
+            {stops.map(([color, off]) => (
+              <stop key={off} offset={off} stopColor={color} />
+            ))}
+          </linearGradient>
+        </defs>
+        <circle cx="34" cy="34" r={r} fill="none" stroke="#e2e8f0" strokeWidth="6" />
+        <circle
+          cx="34"
+          cy="34"
+          r={r}
+          fill="none"
+          stroke={`url(#${gradId})`}
+          strokeWidth="6"
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={offset}
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-base font-extrabold leading-none tracking-tight text-slate-900">{score}%</span>
+        <span className="mt-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-400">match</span>
+      </div>
+    </div>
+  )
 }
 
 export function ScoreBadge({ score }: { score: number }) {
   return (
-    <span className="inline-flex items-center rounded-full bg-emerald-600 text-white text-xs font-bold px-2.5 py-1 shadow-sm">
-      {score}% match
+    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600 text-white text-xs font-bold px-2.5 py-1 shadow-sm">
+      <span className="h-1.5 w-1.5 rounded-full bg-white/80" /> {score}% match
     </span>
   )
 }
 
 export function TrustBadge({ score }: { score: number }) {
   return (
-    <span className="inline-flex items-center rounded-full bg-white text-slate-700 ring-1 ring-inset ring-slate-200 text-xs font-semibold px-2.5 py-1" title="Trust score (0–100)">
-      ★ {score} trust
+    <span className="inline-flex items-center rounded-full bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200 text-xs font-semibold px-2.5 py-1 shadow-sm" title="Trust score (0–100)">
+      <span className="text-amber-500">★</span>&nbsp;{score} trust
     </span>
   )
 }
 
 export function VerifiedBadge() {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-indigo-600 text-white text-xs font-bold px-2.5 py-1" title="Verified account">
+    <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-xs font-bold px-2.5 py-1 shadow-sm" title="Verified account">
       ✓ Verified
     </span>
   )
@@ -95,15 +148,16 @@ export function VerifiedBadge() {
 
 export function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
-    PENDING: 'bg-amber-100 text-amber-800',
-    ACCEPTED: 'bg-emerald-100 text-emerald-800',
-    DECLINED: 'bg-red-100 text-red-800',
-    COMPLETED: 'bg-indigo-100 text-indigo-800',
-    CANCELLED: 'bg-slate-200 text-slate-700',
+    PENDING: 'bg-amber-100 text-amber-800 ring-amber-200',
+    ACCEPTED: 'bg-emerald-100 text-emerald-800 ring-emerald-200',
+    DECLINED: 'bg-red-100 text-red-800 ring-red-200',
+    COMPLETED: 'bg-indigo-100 text-indigo-800 ring-indigo-200',
+    CANCELLED: 'bg-slate-200 text-slate-700 ring-slate-300',
   }
   const label = status.charAt(0) + status.slice(1).toLowerCase()
   return (
-    <span className={`inline-flex items-center rounded-full text-xs font-semibold px-2.5 py-1 ${map[status] || 'bg-slate-100 text-slate-700'}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-full ring-1 ring-inset text-xs font-semibold px-2.5 py-1 shadow-sm ${map[status] || 'bg-slate-100 text-slate-700 ring-slate-200'}`}>
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
       {label}
     </span>
   )

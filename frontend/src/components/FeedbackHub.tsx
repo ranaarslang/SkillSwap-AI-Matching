@@ -60,7 +60,8 @@ export default function FeedbackHub({ sessions, currentUserId, peerProfiles, loa
   return (
     <div className="max-w-2xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Session Feedback Hub</h1>
+        <p className="eyebrow">Session Feedback</p>
+        <h1 className="page-title mt-1">Session Feedback Hub</h1>
         <p className="text-sm text-slate-500">Rate a completed session — your feedback updates your partner&apos;s trust score.</p>
       </div>
 
@@ -73,12 +74,12 @@ export default function FeedbackHub({ sessions, currentUserId, peerProfiles, loa
       {loading ? (
         <p className="text-slate-500 text-sm">Loading your sessions…</p>
       ) : completedPartners.length === 0 ? (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-10 text-center">
+        <div className="card p-10 text-center">
           <p className="font-semibold text-slate-800">No completed sessions yet</p>
           <p className="text-sm text-slate-500 mt-1">Once a session is marked complete, your partner will appear here for review.</p>
         </div>
       ) : (
-        <form onSubmit={submit} className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
+        <form onSubmit={submit} className="card p-6 space-y-4">
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1" htmlFor="fb-partner">Partner (completed sessions only)</label>
             <select
@@ -90,7 +91,7 @@ export default function FeedbackHub({ sessions, currentUserId, peerProfiles, loa
                 setSubmitError('')
               }}
               required
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="input"
             >
               <option value="" disabled>Select a partner…</option>
               {completedPartners.map(({ partner }) => (
@@ -139,7 +140,7 @@ export default function FeedbackHub({ sessions, currentUserId, peerProfiles, loa
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               placeholder="What went well? What could be better?"
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="input"
             />
           </div>
 
@@ -153,7 +154,7 @@ export default function FeedbackHub({ sessions, currentUserId, peerProfiles, loa
           <button
             type="submit"
             disabled={busy || rating === 0 || !selectedId}
-            className="rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-semibold px-6 py-2.5"
+            className="btn-primary"
           >
             {busy ? 'Submitting…' : 'Submit review'}
           </button>

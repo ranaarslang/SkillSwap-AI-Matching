@@ -58,6 +58,7 @@ backend, React + TypeScript + Vite + Tailwind frontend, SQLite.
 | `POST /api/auth/login/` `{email_or_username, password}` | 200 `{access, refresh, user}` |
 | `POST /api/auth/refresh/` `{refresh}` | 200 `{access}` |
 | `POST /api/auth/logout/` | 200 (client discards tokens; JWTs are stateless) |
+| `POST /api/auth/change-password/` `{current_password, new_password, confirm_password}` | **IsAuthenticated.** Verifies the current password, new password min 6 chars, confirm must match; 200 on success (new password works immediately for login); 400 with a clear message on wrong current password / too-short new password / mismatch; 401 unauthenticated. UI: "Change Password" card in the Profile panel (current + new + confirm, frontend validation, success/error toasts). |
 | `GET /api/profile/me/` · `PUT /api/profile/me/` | Profile + `teach_skills` / `learn_skills` (PUT syncs USER_SKILL rows) |
 | `GET /api/profiles/<user_id>/` | Public profile |
 | `GET /api/matches/` | Score ≥ 50 only, desc; `{match_score, location_bonus, same_location, can_teach_you, you_can_teach_them}` |
@@ -261,6 +262,136 @@ Frontend — run by the coordinator on 2026-11-10 (after the rebrand edit):
    cancel, review moderation). The `admin` demo account is staff/superuser
    and is excluded from matching. The matcher lock in `get_matcher()` is a
    thread-safety fix only — scores, threshold and model unchanged.
+
+## Fix round 2 — dedicated admin login, change password, seed fix, premium theme, distinct admin console (2026-11-10, user feedback)
+
+The user reported (1) the admin login showed the sign-up option too, and
+(2) the admin account could only be opened with the demo password — any
+password of their own choice said invalid. They then said the theme still
+looked low-level, and that the admin panel must look clearly different
+from the student app. Changes:
+
+- **Dedicated admin login page:** `AuthScreen` gains `variant="admin"`
+  (hash route `#/admin-login` in `App.tsx`, hashchange listener). Login
+  only — no Sign up tab, no signup link, "Admin Login" heading with a
+  shield mark and a staff-only note. The main login screen has an
+  "Admin Login →" link. A staff login there lands on the Admin Panel;
+  a non-staff login there is rejected with a clear "staff only" error
+  and is not authenticated (tokens cleared). Normal student login/signup
+  is unchanged. Logout clears the `#/admin-login` hash.
+- **Change password (self-service):** new endpoint
+  `POST /api/auth/change-password/` (see the endpoint table) + a "Change
+  Password" card in `ProfilePanel` (current + new + confirm). The new
+  password works immediately for login. This is how the user sets their
+  OWN admin password: log in as admin, open Create Your Skill Account,
+  set a new password there.
+- **Seed fix (critical):** `seed_demo.py` now sets the admin password
+  (`demo1234`) ONLY when the admin account is first created
+  (`admin_created` True). It never overwrites it on re-seed, so a
+  password the user sets survives Render redeploys (Render runs
+  `seed_demo` on every backend deploy). Demo student users keep their
+  re-seed behaviour (demo1234) — intentional, unchanged.
+- **Admin self-reset verified:** `admin_reset_password` has no self-block;
+  the admin resetting their OWN password from the panel works and the
+  supplied password logs in immediately.
+- **Per-user password matching (Django PBKDF2 hashes, unchanged):**
+  login checks the entered password against that user's own stored hash
+  only. Verified locally: maya/demo1234 works; maya + a wrong password
+  rejected; maya + the admin's password rejected; admin + a student's
+  password rejected; after changing the admin password, admin + the new
+  password works and admin + demo1234 is rejected; after re-running
+  `seed_demo`, the changed admin password still works.
+- **Premium theme elevation (whole frontend):** the previous
+  "professional" pass was judged low-level, so the frontend now has a
+  deliberate design-token system in `styles.css` (brand scale 50–950,
+  ink scale, shadow tokens card/lift/pop/brand, radius tokens,
+  component classes `.card`, `.card-interactive`, `.btn-primary`,
+  `.btn-secondary`, `.input`, `.eyebrow`, `.page-title`, `.page-sub`,
+  `.logo-mark`, `.grad-text`, `.stat-card`, `animate-rise`/`animate-fade`,
+  layered body background with subtle indigo radial tints) used
+  consistently in `ui.tsx` (new `ScoreRing` SVG match-score ring,
+  `LogoMark` gradient tile, refined Avatar/Chip/TrustBadge/VerifiedBadge/
+  ScoreBadge/StatusBadge), `App.tsx` (gradient wordmark, gradient active
+  nav pill, user card with trust progress bar), `Dashboard.tsx`
+  (ScoreRing on match cards, gradient top accent bar, stat cards),
+  `AuthScreen.tsx` (gradient brand panel with glow orbs, glassy feature
+  chips, gradient headline accent, `rounded-panel` + `shadow-lift` form
+  card), `ProfileModal.tsx` (gradient header with glow orb, backdrop
+  blur + fade/rise animations), `ProfilePanel.tsx`, `ChatHub.tsx`,
+  `FeedbackHub.tsx`, `AdminPanel.tsx`, `AdminUserDetail.tsx`,
+  `SkillPicker.tsx`. Standard: polished modern SaaS (Linear / Stripe /
+  Notion level of finish), indigo brand with a supporting palette, no
+  rainbow. Mobile-first: 390px verified by screenshot.
+- **Distinct admin console identity:** the admin area is a different
+  product surface — a dark console, not another page of the student app.
+  When the admin tab is active, `App.tsx` renders a dark shell
+  (slate-950 background with a faint emerald radial tint, dark header
+  with emerald shield tile + "Admin Console" / "SKILL SWAP PLATFORM"
+  wordmark + STAFF badge, dark sidebar labelled "Console" with emerald
+  active states, "← Back to student app" button, dark user card with an
+  emerald trust bar, dark mobile bottom nav with emerald active tab).
+  `AdminPanel.tsx` + `AdminUserDetail.tsx` are fully converted to dark
+  surfaces (slate-900 cards, slate-800 borders, slate-100/300/400 text,
+  emerald accent replacing indigo, `btn-admin` emerald-gradient buttons,
+  `btn-admin-secondary` dark buttons, `input-dark` fields, denser
+  tables `px-3 py-2.5`), with an `.admin-console` scope in `styles.css`
+  restyling the shared token classes (`.card`, `.stat-card` with an
+  emerald top accent, `.page-title`, `.page-sub`, `.eyebrow`) so the
+  two looks can never bleed into each other. The admin login page is
+  dark too (dark form card, emerald shield + "ADMIN CONSOLE" eyebrow,
+  emerald Log in button, dark inputs). The student app keeps its premium
+  light theme; a student never sees admin branding (verified: no Admin
+  nav entry, no "Admin Console" text after a student login).
+- **Access rule (verified):** only the admin's own database-stored
+  password opens the admin panel. Students get 403 on all 11
+  `/api/admin/` endpoints (re-verified this round), the Admin nav is
+  hidden for non-staff users, and the admin login page rejects non-staff
+  logins with a clear error.
+
+### Verification (fix round 2, coordinator, 2026-11-10)
+
+- Backend: `manage.py check` clean; fresh-DB migrate + `seed_demo`
+  clean. `npm run build` passes (strict TS + Vite).
+- API smoke script `/tmp/skillswap-v2-verify-fix2.py` (local Daphne):
+  **phase 1: 13/13 passed; phase 2 (after re-running seed_demo):
+  7/7 passed** — incl. the five per-user password checks: (1) maya/
+  demo1234 → 200; (2) maya + wrong password and maya + admin's password
+  → 400; (3) admin + a student's password → 400; (4) after changing the
+  admin password via change-password, admin + new password → 200 and
+  admin + demo1234 → 400; (5) after re-running seed_demo, the changed
+  admin password still works and demo1234 stays rejected. Wrong current
+  password → 400, too-short new password → 400, unauthenticated
+  change-password → 401, non-staff admin stats → 403. Admin self-reset
+  to a supplied password → login works. Local DB restored to
+  admin/demo1234 afterwards.
+- Fresh API re-check after the admin-console work (local Daphne,
+  2026-11-10 ~15:20 PKT): maya/demo1234 → 200; maya/wrong → 400;
+  admin/demo1234 → 200; maya's token → `GET /api/admin/stats/` → 403;
+  admin change-password → 200, admin/new password → 200, admin/demo1234
+  after change → 400; admin password restored to demo1234.
+- Visual verification: Playwright script
+  `/tmp/skillswap-v2-shots-fix2.py` (vite preview :4173 + local Daphne
+  :8000 with `CORS_ALLOWED_ORIGINS` including the preview origin) —
+  **ALL VISUAL CHECKS DONE**: auth desktop + 390px, admin login page
+  (no Sign up tab, "Admin Console" brand), admin login rejecting maya
+  (error `[role='alert']` text checked — body text alone was a false
+  positive, the page itself contains "Staff only" copy), admin login
+  landing on the dark Admin Console (desktop + 390px), maya dashboard
+  (Priya 78%, Leo 60%, ScoreRings; no Admin nav, no admin branding),
+  profile modal, Change Password section, dashboard 390px. Screenshots:
+  `/tmp/skillswap-v2-shots-fix2/` (`01-auth-desktop`,
+  `03-admin-login-desktop`, `05-admin-console-desktop`,
+  `06-admin-console-mobile`, `07-dashboard-desktop`, `08-profile-modal`,
+  `09-profile-change-password`, `10-dashboard-mobile`).
+
+**Known caveat — admin password vs. redeploy:** the live backend uses a
+SQLite file DB with no persistent disk on Render free tier, so the DB is
+rebuilt from scratch (migrate + `seed_demo`) on every backend code
+deploy. The seed fix means a changed admin password survives `seed_demo`
+re-runs on a live DB, but it **reverts to demo1234 on the next backend
+code deploy** (fresh DB → admin is "first created" again) and can then be
+re-set in 30 seconds via the new Change Password UI. A persistent disk /
+external DB would fix it permanently (paid option — not decided).
 
 ## Deliberately left out
 

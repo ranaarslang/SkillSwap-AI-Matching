@@ -212,6 +212,8 @@ export const api = {
   login: (body: { email_or_username: string; password: string }) =>
     request<{ access: string; refresh: string; user: User }>('/auth/login/', { method: 'POST', body: JSON.stringify(body) }),
   logout: () => request('/auth/logout/', { method: 'POST', body: JSON.stringify({}) }),
+  changePassword: (body: { current_password: string; new_password: string }) =>
+    request<{ detail: string }>('/auth/change-password/', { method: 'POST', body: JSON.stringify(body) }),
   getMyProfile: () => request<Profile>('/profile/me/'),
   updateMyProfile: (body: {
     full_name?: string
