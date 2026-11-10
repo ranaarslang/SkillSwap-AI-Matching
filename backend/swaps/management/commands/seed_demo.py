@@ -36,7 +36,7 @@ USERS = [
                "Learning design to make my dashboards beautiful.",
         "availability": "Weeknights",
         "teach": ["Python", "Data Visualization"],
-        "learn": ["Public Speaking", "UI Design", "Storytelling"],
+        "learn": ["Public Speaking", "UI Design", "Storytelling", "Video Editing"],
         "verified": True,
         "avatar_color": "#4F46E5",
     },
