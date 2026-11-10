@@ -1,4 +1,3 @@
-import { useId } from 'react'
 import type { User } from '../api'
 import { displayName, initials } from '../api'
 
@@ -55,35 +54,20 @@ export const IconSearch = ({ className }: { className?: string }) => (
   <Svg className={className} d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35" />
 )
 
-// ---- Brand mark: two circular arrows chasing each other in a loop -------
-// A full-round disc (indigo -> violet -> sky) with a white swap loop: the
-// top arc flows right, the bottom arc flows left, arrowheads at both ends,
-// and a small white dot at the centre. Reads as "skill swap" at any size
-// and stays crisp on both the dark navbar and the light auth screen.
+// ---- Brand mark: Option B — two people exchanging a glowing star --------
+// Chosen by the user (2026-11-10). AI-generated tile (public/logo.png):
+// two abstract figures (violet + sky) passing a golden star between them
+// on a deep indigo rounded square. The PNG's corners are transparent
+// (rounded-rect alpha mask applied at build time), so no white corners
+// show on the dark navbar. Reads on dark and light backgrounds alike.
 export function LogoMark({ className = 'h-9 w-9' }: { className?: string }) {
-  const uid = useId().replace(/[^a-zA-Z0-9]/g, '')
-  const gradId = `logo-grad-${uid}`
-  const markId = `logo-arrow-${uid}`
   return (
-    <span className={`logo-mark shrink-0 ${className}`} aria-hidden>
-      <svg viewBox="0 0 48 48" className="h-[64%] w-[64%]" fill="none" aria-hidden>
-        <defs>
-          <linearGradient id={gradId} x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#6366f1" />
-            <stop offset="52%" stopColor="#8b5cf6" />
-            <stop offset="100%" stopColor="#0ea5e9" />
-          </linearGradient>
-          <marker id={markId} markerWidth="8" markerHeight="8" refX="7.2" refY="4" orient="auto" markerUnits="userSpaceOnUse">
-            <path d="M0.8 0.8 L7.2 4 L0.8 7.2 Z" fill="#fff" />
-          </marker>
-        </defs>
-        <circle cx="24" cy="24" r="24" fill={`url(#${gradId})`} />
-        <circle cx="17" cy="14" r="9" fill="#fff" opacity="0.14" />
-        <path d="M14.5 29.5 A11 11 0 0 1 33.5 18.5" stroke="#fff" strokeWidth="3.4" strokeLinecap="round" markerEnd={`url(#${markId})`} />
-        <path d="M33.5 18.5 A11 11 0 0 1 14.5 29.5" stroke="#fff" strokeWidth="3.4" strokeLinecap="round" markerEnd={`url(#${markId})`} />
-        <circle cx="24" cy="24" r="2" fill="#fff" opacity="0.95" />
-      </svg>
-    </span>
+    <img
+      src="/logo.png"
+      alt="Skill Swap Platform logo"
+      className={`shrink-0 rounded-[22%] object-cover ${className}`}
+      draggable={false}
+    />
   )
 }
 

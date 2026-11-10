@@ -561,6 +561,47 @@ changed** — `LogoMark` in `frontend/src/components/ui.tsx`, the
   (`01-login-desktop`, `10-student-desktop-loaded-header`,
   `12-student-mobile-loaded-header`).
 
+## Logo swap — Option B, user-chosen (2026-11-10, user feedback)
+
+User rejected the circular loop mark ("kya bkwas logo lgaya ha") and picked
+**Option B** from three generated concepts: two abstract figures (violet +
+sky) passing a glowing golden star between them. **Only the logo changed**
+— `App.tsx` (navbar, admin console, dashboard) is byte-identical again.
+
+- **New mark:** the chosen AI-generated tile, shipped as
+  `frontend/public/logo.png` (512×512) and rendered by `LogoMark`
+  (`frontend/src/components/ui.tsx`) as an `<img>` (44px navbar, 44px auth
+  screens, `rounded-[22%]`). Favicon is the same mark as
+  `frontend/public/favicon.png` (192×192, linked from
+  `frontend/index.html`); the old `favicon.svg` was deleted.
+- **White corners:** the source image has a white canvas outside its dark
+  rounded square. Fixed in the file itself, not in CSS: PIL cropped the
+  content and applied a rounded-rect alpha mask (radius measured from the
+  image, ~190px at 1600px) so the PNG's corners are transparent. Automated
+  check in the verify script reads the PNG's corner pixels — alpha 0 at all
+  four corners, 255 at centre. The dark navbar shows no white corners.
+  The three generated options live in `logo-options/` (not committed).
+- **Verification (Option B round, coordinator, 2026-11-10):** `npm run
+  build` passes (strict TS + Vite), built with
+  `VITE_API_URL=https://skillswap-v2-backend.onrender.com/api`.
+  Playwright (`/tmp/verify_logo_b.py`, `/tmp/verify_search_b2.py`)
+  against the production build served locally on `:8471` (harness: loopback
+  `socat` relay `:3129` → egress proxy, `--disable-web-security`
+  test-only — the preview origin is not in the backend's CORS list, so
+  without the flag the login API is blocked by the browser; the live site
+  origin is allowed, so this is a test-only limitation). Two early failures
+  were harness-only: Chromium cannot use the credential-embedded
+  `HTTPS_PROXY` URL (tunnel fails) and the IPv6-only proxy hostname — the
+  socat relay fixed both. Screenshots inspected by the coordinator: desktop
+  dark navbar shows the Option B tile with glow and the user chip
+  (★100 ✓), login screen shows it on the hero panel, 390px navbar shows
+  it clean with 0px horizontal overflow; search "Python" filters to Leo
+  only, clearing restores Priya; dashboard loads Priya 79% / Leo 59%; no
+  page errors; `/logo.png` and `/favicon.png` serve 200. Screenshots:
+  `/tmp/skillswap-v2-shots-logo-b/` (`01-login-desktop`,
+  `10-student-desktop-loaded-header`, `12-student-mobile-loaded-header`,
+  `13-header-loaded-trust`, `14-search-python`).
+
 ## Deliberately left out
 
 - Nothing the SRS/SDD requires is missing. Out of scope for this build (not
