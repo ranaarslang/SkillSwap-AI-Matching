@@ -6,7 +6,7 @@ import ChatHub from './components/ChatHub'
 import FeedbackHub from './components/FeedbackHub'
 import AdminPanel from './components/AdminPanel'
 import ProfileModal from './components/ProfileModal'
-import { Avatar, IconChat, IconLogout, IconShield, IconSpark, IconStar, IconUser, LogoMark } from './components/ui'
+import { Avatar, IconChat, IconLogout, IconSearch, IconShield, IconSpark, IconStar, IconUser, LogoMark } from './components/ui'
 import {
   api,
   ApiError,
@@ -243,9 +243,14 @@ export default function App() {
         className={`sticky top-0 z-40 border-b backdrop-blur ${
           isAdminView
             ? 'border-slate-800 bg-slate-950/95 shadow-[0_1px_12px_rgba(0,0,0,0.45)]'
-            : 'border-slate-200/80 bg-white/90 shadow-[0_1px_12px_rgba(15,23,42,0.06)]'
+            : 'border-transparent bg-white/95 shadow-[0_1px_12px_rgba(15,23,42,0.06)]'
         }`}
       >
+        {/* Student-only brand gradient hairline along the header's bottom
+            edge — the premium signature. Admin keeps its plain dark border. */}
+        {!isAdminView && (
+          <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-gradient-to-r from-indigo-500 via-violet-500 to-sky-400" />
+        )}
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3">
           {isAdminView ? (
             <button onClick={() => setTab('dashboard')} className="flex shrink-0 items-center gap-2.5 text-left" aria-label="Admin Console — back to student app">
@@ -258,31 +263,49 @@ export default function App() {
               </span>
             </button>
           ) : (
-            <button onClick={() => setTab('dashboard')} className="flex shrink-0 items-center gap-2.5 text-left" aria-label="Skill Swap Platform with AI Matching — go to dashboard">
-              <LogoMark className="h-9 w-9" />
+            <button onClick={() => setTab('dashboard')} className="flex shrink-0 items-center gap-3 text-left transition hover:opacity-90" aria-label="Skill Swap Platform with AI Matching — go to dashboard">
+              <LogoMark className="h-11 w-11 ring-1 ring-white/60" />
               <span className="leading-tight">
-                <span className="block text-[15px] font-extrabold tracking-tight text-slate-900">Skill Swap <span className="grad-text">Platform</span></span>
-                <span className="block text-[11px] font-bold uppercase tracking-[0.14em] text-indigo-600">with AI Matching</span>
+                <span className="block text-[17px] font-extrabold tracking-tight text-slate-900">Skill Swap <span className="grad-text">Platform</span></span>
+                <span className="block text-[11px] font-bold uppercase tracking-[0.18em] text-indigo-600">with AI Matching</span>
               </span>
             </button>
           )}
           {!isAdminView && (
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              placeholder="Search people, skills…"
-              aria-label="Search matches"
-              className="search min-w-[160px] flex-1 rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:outline-none focus:ring-4 focus:ring-indigo-500/15"
-            />
+            <div className="relative min-w-[180px] flex-1 sm:mx-4 sm:max-w-md">
+              <IconSearch className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                placeholder="Search people, skills…"
+                aria-label="Search matches"
+                className="search w-full rounded-full border border-slate-200/80 bg-slate-100/90 py-2 pl-10 pr-4 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:outline-none focus:ring-4 focus:ring-indigo-500/15"
+              />
+            </div>
           )}
           <div className="ml-auto flex shrink-0 items-center gap-2">
-            <Avatar user={user} color={profile?.avatar_color} size="sm" />
-            <span className={`hidden text-sm font-semibold sm:block ${isAdminView ? 'text-slate-200' : 'text-slate-700'}`}>{displayName(user)}</span>
-            {isAdminView && (
-              <span className="hidden rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-emerald-300 ring-1 ring-inset ring-emerald-500/30 sm:block">
-                Staff
-              </span>
+            {isAdminView ? (
+              <>
+                <Avatar user={user} color={profile?.avatar_color} size="sm" />
+                <span className="hidden text-sm font-semibold text-slate-200 sm:block">{displayName(user)}</span>
+                <span className="hidden rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-emerald-300 ring-1 ring-inset ring-emerald-500/30 sm:block">
+                  Staff
+                </span>
+              </>
+            ) : (
+              <div className="flex items-center gap-2 rounded-full border border-slate-200/90 bg-white py-1 pl-1 pr-2.5 shadow-sm">
+                <Avatar user={user} color={profile?.avatar_color} size="sm" />
+                <span className="hidden text-sm font-semibold text-slate-700 sm:block">{displayName(user)}</span>
+                {profile && (
+                  <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700 ring-1 ring-inset ring-amber-200" title={`Trust score ${profile.trust_score} out of 100`}>
+                    <span className="text-amber-500">★</span> {profile.trust_score}
+                  </span>
+                )}
+                {profile?.verified_badge && (
+                  <span className="hidden text-[11px] font-bold text-indigo-600 sm:inline" title="Verified account">✓</span>
+                )}
+              </div>
             )}
           </div>
         </div>

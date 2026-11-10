@@ -50,6 +50,10 @@ export const IconShield = ({ className }: { className?: string }) => (
   <Svg className={className} d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM9 12l2 2 4-4" />
 )
 
+export const IconSearch = ({ className }: { className?: string }) => (
+  <Svg className={className} d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35" />
+)
+
 // ---- Primitives ------------------------------------------------------------
 export function LogoMark({ className = 'h-9 w-9' }: { className?: string }) {
   const iconCls = className.includes('h-11') ? 'h-6 w-6' : className.includes('h-8') ? 'h-4 w-4' : 'h-5 w-5'

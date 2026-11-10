@@ -422,6 +422,57 @@ keeps running on SQLite and the old caveat still applies — do NOT set a
 permanent admin password before the Neon switch, or it will be wiped by
 the migration deploy itself.
 
+## Student header redesign (2026-11-10, user feedback)
+
+User liked the dark admin console header but not the student header, and
+chose "Naya premium header banao" (full premium redesign). **Only the
+student header changed; the admin header/console is byte-identical**
+(`git diff` confirms: admin branch JSX, admin header classes, and the
+admin STAFF badge are untouched; the new gradient hairline renders only
+when `!isAdminView`).
+
+What changed (`frontend/src/App.tsx` header block + `IconSearch` in
+`frontend/src/components/ui.tsx`):
+- Bigger brand lockup: `LogoMark` 36px → 44px with a white ring, wordmark
+  15px → 17px extrabold, eyebrow tracking widened — the header now reads
+  as a brand moment, not a generic white bar.
+- Brand gradient hairline: a 2px indigo → violet → sky line along the
+  header's bottom edge (student only; admin keeps its plain dark border).
+- Search is now a proper pill: rounded-full, magnifier icon, soft slate
+  fill, indigo focus ring, capped at `max-w-md` and centred. Same value /
+  `onChange` / handler — filtering behaviour unchanged.
+- User chip: avatar + name + trust pill (`★ {trust_score}` amber) + `✓`
+  verified mark, inside one rounded-full bordered chip. Trust pill shows
+  once the profile loads; name stays hidden below the `sm` breakpoint.
+- Light premium theme kept throughout — no dark/emerald anywhere, so the
+  student app can never be mistaken for the admin console.
+
+### Verification (header round, coordinator, 2026-11-10)
+
+- `npm run build` passes (strict TS + Vite).
+- Visual verification: Playwright (`/tmp/verify_header3.py`,
+  `/tmp/verify_header4.py`) against the production build served locally
+  with `VITE_API_URL` pointing at the live Render backend. Local test
+  notes: Chromium cannot reach the VM's IPv6-only egress proxy, so tests
+  ran through a loopback `socat` TCP relay (127.0.0.1:3129 → proxy);
+  `--disable-web-security` was needed because the backend's CORS list
+  only allows the Netlify origin, not the local preview origin — both
+  are test-harness-only, not app changes. **Student header PASSED**:
+  desktop + 390px screenshots show the new lockup, hairline, search pill
+  and trust chip (`★ 100` + `✓` for maya); 0px horizontal overflow at
+  390px; search "Python" filters to Leo only and clearing restores both
+  matches; dashboard loads with Priya 79% / Leo 59%; no page errors.
+  Screenshots: `/tmp/skillswap-v2-shots-header/` (`01-student-desktop`,
+  `03-student-mobile`, `10-student-desktop-loaded`,
+  `12-student-mobile-loaded`).
+- **Admin console header — code-verified unchanged, live screenshot not
+  taken in this round:** the user changed the admin password via Change
+  Password (as instructed after the Neon shift), so `admin/demo1234`
+  now correctly returns 400 "Invalid credentials" and the test login
+  cannot enter the console without the user's new password (never asked
+  for). The `git diff` proves the admin header JSX is untouched, and the
+  parent's post-deploy live check covers the admin console visually.
+
 ## Deliberately left out
 
 - Nothing the SRS/SDD requires is missing. Out of scope for this build (not
