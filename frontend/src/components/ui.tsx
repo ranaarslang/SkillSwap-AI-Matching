@@ -46,6 +46,10 @@ export const IconSwap = ({ className }: { className?: string }) => (
   <Svg className={className} d="M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3" />
 )
 
+export const IconShield = ({ className }: { className?: string }) => (
+  <Svg className={className} d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM9 12l2 2 4-4" />
+)
+
 // ---- Primitives ------------------------------------------------------------
 export function Avatar({ user, color, size = 'md' }: { user: User; color?: string; size?: 'sm' | 'md' | 'lg' }) {
   const cls = size === 'lg' ? 'h-16 w-16 text-xl' : size === 'sm' ? 'h-8 w-8 text-xs' : 'h-11 w-11 text-sm'

@@ -3,7 +3,9 @@
 Creates 6 demo users (password demo1234), their profiles + skills,
 3 sessions (ACCEPTED maya<->leo, PENDING maya<->jonah,
 COMPLETED maya<->sana with one IntegrityReview) and a few messages
-between maya and leo. Recomputes trust scores afterwards.
+between maya and leo. Recomputes trust scores afterwards. Also creates
+the staff admin account (username "admin", password "demo1234") for the
+Admin Panel — staff accounts never appear in matching.
 
 Usage: python manage.py seed_demo
 """
@@ -114,9 +116,40 @@ USERS = [
 
 
 class Command(BaseCommand):
-    help = "Seed the 6 demo users, sessions, messages and one review."
+    help = "Seed the 6 demo users + admin, sessions, messages and one review."
 
     def handle(self, *args, **options):
+        # Staff admin for the Admin Panel (professor/staff login).
+        admin, admin_created = User.objects.get_or_create(
+            username="admin",
+            defaults={
+                "email": "admin@skillswap.demo",
+                "first_name": "Admin",
+                "last_name": "",
+                "is_staff": True,
+                "is_superuser": True,
+            },
+        )
+        admin.set_password("demo1234")
+        admin.email = "admin@skillswap.demo"
+        admin.first_name = "Admin"
+        admin.is_staff = True
+        admin.is_superuser = True
+        admin.save()
+        Profile.objects.update_or_create(
+            user=admin,
+            defaults={
+                "bio": "Platform administrator.",
+                "location": "",
+                "availability": "",
+                "avatar_color": "#0F172A",
+                "verified_badge": True,
+            },
+        )
+        self.stdout.write(
+            f"  admin user ({'created' if admin_created else 'exists'})"
+        )
+
         users = {}
         for spec in USERS:
             user, created = User.objects.get_or_create(

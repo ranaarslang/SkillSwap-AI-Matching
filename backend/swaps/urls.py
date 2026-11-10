@@ -25,4 +25,40 @@ urlpatterns = [
     path("messages/", views.messages, name="messages"),
     # Reviews
     path("reviews/", views.reviews, name="reviews"),
+    # Admin (staff only — IsAdminUser)
+    path("admin/stats/", views.admin_stats, name="admin_stats"),
+    path("admin/users/", views.admin_users, name="admin_users"),
+    path("admin/users/<int:user_id>/", views.admin_user_detail, name="admin_user_detail"),
+    path(
+        "admin/users/<int:user_id>/toggle-active/",
+        views.admin_toggle_user_active,
+        name="admin_toggle_user_active",
+    ),
+    path(
+        "admin/users/<int:user_id>/reset-password/",
+        views.admin_reset_password,
+        name="admin_reset_password",
+    ),
+    path(
+        "admin/users/<int:user_id>/set-trust/",
+        views.admin_set_trust,
+        name="admin_set_trust",
+    ),
+    path("admin/sessions/", views.admin_sessions, name="admin_sessions"),
+    path(
+        "admin/sessions/<int:session_id>/cancel/",
+        views.admin_cancel_session,
+        name="admin_cancel_session",
+    ),
+    path("admin/reviews/", views.admin_reviews, name="admin_reviews"),
+    path(
+        "admin/reviews/<int:review_id>/",
+        views.admin_delete_review,
+        name="admin_delete_review",
+    ),
+    path(
+        "admin/messages/<int:message_id>/",
+        views.admin_delete_message,
+        name="admin_delete_message",
+    ),
 ]

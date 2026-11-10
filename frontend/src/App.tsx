@@ -4,8 +4,9 @@ import ProfilePanel from './components/ProfilePanel'
 import Dashboard from './components/Dashboard'
 import ChatHub from './components/ChatHub'
 import FeedbackHub from './components/FeedbackHub'
+import AdminPanel from './components/AdminPanel'
 import ProfileModal from './components/ProfileModal'
-import { Avatar, IconChat, IconLogout, IconSpark, IconStar, IconSwap, IconUser } from './components/ui'
+import { Avatar, IconChat, IconLogout, IconShield, IconSpark, IconStar, IconSwap, IconUser } from './components/ui'
 import {
   api,
   ApiError,
@@ -18,14 +19,18 @@ import {
 } from './api'
 import type { ChatMessage, Conversation, MatchProfile, Profile, SessionItem, User, WsStatus } from './api'
 
-type Tab = 'profile' | 'dashboard' | 'chat' | 'feedback'
+type Tab = 'profile' | 'dashboard' | 'chat' | 'feedback' | 'admin'
 
-const TABS: { id: Tab; label: string; short: string; Icon: (p: { className?: string }) => JSX.Element }[] = [
+type TabDef = { id: Tab; label: string; short: string; Icon: (p: { className?: string }) => JSX.Element }
+
+const TABS: TabDef[] = [
   { id: 'profile', label: 'Create Your Skill Account', short: 'Account', Icon: IconUser },
   { id: 'dashboard', label: 'AI Match Dashboard', short: 'Matches', Icon: IconSpark },
   { id: 'chat', label: 'Chat & Scheduler Hub', short: 'Chat', Icon: IconChat },
   { id: 'feedback', label: 'Session Feedback Hub', short: 'Feedback', Icon: IconStar },
 ]
+
+const ADMIN_TAB: TabDef = { id: 'admin', label: 'Admin Panel', short: 'Admin', Icon: IconShield }
 
 export default function App() {
   const [user, setUser] = useState<User | null>(() => {
@@ -52,7 +57,7 @@ export default function App() {
   const [loadError, setLoadError] = useState('')
   const [wsStatus, setWsStatus] = useState<WsStatus>('offline')
   const [toast, setToast] = useState('')
-  const [viewingProfile, setViewingProfile] = useState<{ profile: MatchProfile; isMatch: boolean } | null>(null)
+  const [viewingProfile, setViewingProfile] = useState<{ profile: MatchProfile; isMatch: boolean; hideScore?: boolean } | null>(null)
   const socketRef = useRef<ChatSocket | null>(null)
   const selectedPeerRef = useRef<User | null>(null)
   selectedPeerRef.current = selectedPeer
@@ -204,6 +209,9 @@ export default function App() {
 
   const unreadTotal = conversations.reduce((n, c) => n + c.unread_count, 0)
 
+  // Staff users get the Admin entry; everyone else never sees it.
+  const visibleTabs: TabDef[] = user?.is_staff ? [...TABS, ADMIN_TAB] : TABS
+
   if (!authed || !user) {
     return <AuthScreen onAuthed={handleAuthed} />
   }
@@ -244,7 +252,7 @@ export default function App() {
             <div>
               <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Menu</p>
               <ul className="space-y-1">
-                {TABS.map((t) => (
+                {visibleTabs.map((t) => (
                   <li key={t.id}>
                     <button
                       onClick={() => setTab(t.id)}
@@ -315,7 +323,7 @@ export default function App() {
               searchQuery={searchQuery}
               onClearSearch={() => setSearchQuery('')}
               onConnect={openChatWith}
-              onViewProfile={(p) => setViewingProfile({ profile: p, isMatch: matches.some((m) => m.user.id === p.user.id) })}
+              onViewProfile={(p) => setViewingProfile({ profile: p, isMatch: matches.some((m) => m.user.id === p.user.id), hideScore: false })}
               sessionCount={sessions.length}
               loading={loading}
               error={loadError}
@@ -341,6 +349,12 @@ export default function App() {
           {tab === 'feedback' && (
             <FeedbackHub sessions={sessions} currentUserId={user.id} peerProfiles={peerProfiles} loading={loading} error={loadError} />
           )}
+          {tab === 'admin' && user.is_staff && (
+            <AdminPanel
+              currentUserId={user.id}
+              onMessage={openChatWith}
+            />
+          )}
         </main>
       </div>
 
@@ -349,6 +363,7 @@ export default function App() {
         <ProfileModal
           profile={viewingProfile.profile}
           isMatch={viewingProfile.isMatch}
+          hideScore={viewingProfile.hideScore}
           onClose={() => setViewingProfile(null)}
           onMessage={openChatWith}
         />
@@ -356,8 +371,8 @@ export default function App() {
 
       {/* Bottom nav (mobile) */}
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white md:hidden" aria-label="Main mobile">
-        <ul className="grid grid-cols-4">
-          {TABS.map((t) => (
+        <ul className={`grid ${visibleTabs.length === 5 ? 'grid-cols-5' : 'grid-cols-4'}`}>
+          {visibleTabs.map((t) => (
             <li key={t.id}>
               <button
                 onClick={() => setTab(t.id)}

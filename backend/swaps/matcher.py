@@ -43,6 +43,7 @@ this interface, so swapping the vectoriser never touches them.
 import logging
 import os
 import re
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -342,6 +343,13 @@ _MATCHERS = {
 
 _fallback_warned = False
 _matcher_instances = {}
+# Guards first-use model loading: the dashboard fires /matches/ and
+# /community/ in parallel, and two threads racing the lazy
+# `from transformers import AutoTokenizer` could see a partially
+# initialised module (ImportError) and permanently cache the TF-IDF
+# fallback. The lock makes first load single-threaded; scores and the
+# 50% threshold are unchanged.
+_matcher_lock = threading.Lock()
 
 
 def get_matcher(name=None):
@@ -357,25 +365,28 @@ def get_matcher(name=None):
     key = (name or os.environ.get("SKILLSWAP_MATCHER", "onnx")).lower()
     if key in _matcher_instances:
         return _matcher_instances[key]
-    cls = _MATCHERS.get(key)
-    if cls is None:
-        raise ValueError(
-            f"Unknown matcher {key!r}. Available: {sorted(_MATCHERS)}")
-    matcher = cls()
-    if key == "onnx":
-        try:
-            matcher._ensure_loaded()
-        except Exception as exc:  # noqa: BLE001
-            if not _fallback_warned:
-                print(f"[matcher] WARNING: ONNX model unavailable ({exc}); "
-                      f"falling back to TF-IDF matching.")
-                logger.warning(
-                    "ONNX model unavailable (%s); TF-IDF fallback active",
-                    exc)
-                _fallback_warned = True
-            matcher = TfidfMatcher()
-    _matcher_instances[key] = matcher
-    return matcher
+    with _matcher_lock:
+        if key in _matcher_instances:
+            return _matcher_instances[key]
+        cls = _MATCHERS.get(key)
+        if cls is None:
+            raise ValueError(
+                f"Unknown matcher {key!r}. Available: {sorted(_MATCHERS)}")
+        matcher = cls()
+        if key == "onnx":
+            try:
+                matcher._ensure_loaded()
+            except Exception as exc:  # noqa: BLE001
+                if not _fallback_warned:
+                    print(f"[matcher] WARNING: ONNX model unavailable ({exc}); "
+                          f"falling back to TF-IDF matching.")
+                    logger.warning(
+                        "ONNX model unavailable (%s); TF-IDF fallback active",
+                        exc)
+                    _fallback_warned = True
+                matcher = TfidfMatcher()
+        _matcher_instances[key] = matcher
+        return matcher
 
 
 def compute_match(me_teach, me_learn, them_teach, them_learn,

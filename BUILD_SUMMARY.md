@@ -43,6 +43,18 @@ backend, React + TypeScript + Vite + Tailwind frontend, SQLite.
 |---|---|
 | `GET /api/health/` | `{"status": "ok"}`, no auth |
 | `POST /api/auth/signup/` `{email, password, full_name, teach_skills, learn_skills}` | 201 `{access, refresh, user}` — **teach_skills and learn_skills are required** (≥1 each, arrays; trimmed, deduped, max 20 each); missing/empty → 400 naming the field. Creates the USER_SKILL rows at registration. |
+| `GET /api/admin/stats/` | Staff only. `{total_users, total_students, total_sessions, sessions_pending/accepted/completed/cancelled, total_messages, total_reviews, average_trust_score}` |
+| `GET /api/admin/users/?q=` | Staff only. All users with full profile + skills + trust + `is_active`/`is_staff`; `q` searches name/username/email. |
+| `GET /api/admin/users/<id>/` | Staff only. Full user record: profile, sessions, reviews received/given, recent messages (20). |
+| `POST /api/admin/users/<id>/toggle-active/` | Staff only. Flips `is_active`; cannot deactivate your own account (400). |
+| `POST /api/admin/users/<id>/reset-password/` `{password?}` | Staff only. Sets the password; blank input auto-generates a secure `Temp-XXXXXXXX` password, returned once (`temporary_password`, `generated`). |
+| `POST /api/admin/users/<id>/set-trust/` `{trust_score}` | Staff only. Manual trust override, clamped 0–100. (A later review recalculates from ratings.) |
+| `GET /api/admin/sessions/?status=` | Staff only. All sessions; optional status filter. |
+| `POST /api/admin/sessions/<id>/cancel/` | Staff only. PENDING/ACCEPTED → CANCELLED; other statuses → 400. |
+| `GET /api/admin/reviews/` | Staff only. All reviews with author/target. |
+| `DELETE /api/admin/reviews/<id>/` | Staff only. Deletes the review and recalculates the target's trust score (returns it). |
+| `DELETE /api/admin/messages/<id>/` | Staff only. Deletes any message. |
+| Non-staff users get **403 on every `/api/admin/` endpoint**; the Admin nav is hidden for non-staff users. Staff accounts never appear in matching (excluded from candidates). |
 | `POST /api/auth/login/` `{email_or_username, password}` | 200 `{access, refresh, user}` |
 | `POST /api/auth/refresh/` `{refresh}` | 200 `{access}` |
 | `POST /api/auth/logout/` | 200 (client discards tokens; JWTs are stateless) |
@@ -120,6 +132,67 @@ and teachers can see it on a profile and contact the person. Changes:
   local preview — see the report handed to the parent. The parent still
   needs to do the live-browser click-through on the deployed link.
 
+## Admin Panel (2026-11-10, user-ordered)
+
+Staff-only section for solving any user issue. Admin demo account
+(**admin / demo1234**, `is_staff` + `is_superuser`, created by
+`seed_demo.py`, survives redeploys) logs in via the normal login page;
+staff users see an **Admin** entry in the sidebar (and mobile nav). The
+panel is in the same professional theme.
+
+- **Dashboard stats:** total users (students split out), total sessions
+  with pending/accepted/completed/cancelled counts, total messages, total
+  reviews, average trust score.
+- **Users management:** searchable table (name, username, email, location,
+  teach/learn skills, trust, active status) with a full-record **View**
+  and an activate/deactivate toggle. Self-deactivation is blocked (400 +
+  disabled button).
+- **User detail view:** one screen per user — profile, skills, location,
+  trust, all sessions (with cancel), reviews received/given, recent
+  messages (with delete), plus the fix-an-issue actions: password reset
+  (supplied or auto-generated temporary password, shown once), trust
+  override (clamped 0–100), activate/deactivate, and a Message button.
+- **Sessions overview:** all sessions with both partners, title, date,
+  duration, status; filter by status; cancel any PENDING/ACCEPTED session
+  (inline confirm).
+- **Reviews moderation:** all reviews with author/target/stars/text;
+  delete recalculates the target's trust score and returns the new value.
+- **Message moderation:** delete any message from the user-detail view.
+- Backend: all `/api/admin/` endpoints (see table) are protected by
+  DRF `IsAdminUser`; the existing public endpoints are untouched. Staff
+  accounts are excluded from matching candidates, so the admin never
+  appears in students' matches/community.
+- **Matcher thread-safety fix (found during verification):** the dashboard
+  fires `/matches/` and `/community/` in parallel, and on a cold server
+  two threads racing the lazy `transformers` import could see a
+  partially initialised module, permanently caching the TF-IDF fallback
+  (observed live: Leo 55%, Priya dropped out of matches). `get_matcher()`
+  now uses a lock with double-checked caching — scores, threshold and
+  model are unchanged; first load is single-threaded. Verified with 3
+  rounds of parallel matches+community calls right after a cold restart:
+  Priya 78 / Leo 60 every time, zero fallback warnings.
+
+### Verification (admin round, coordinator, 2026-11-10)
+
+- Frontend `npm run build` (strict TS + Vite) passes; deploy ZIP rebuilt
+  with `VITE_API_URL=https://skillswap-v2-backend.onrender.com/api`.
+- Backend `manage.py check` clean; fresh-DB `migrate` clean; `seed_demo`
+  clean (6 demo users + admin, 3 sessions, 1 review, 4 messages).
+- Local Daphne smoke script (`/tmp/skillswap-v2-verify-admin.py`):
+  **38/38 passed** — admin login + `is_staff` flag; stats counts; users
+  list + search; sessions list + status filter; reviews list; user detail
+  (all keys, message present); password reset (supplied password works,
+  auto-generated password works, shown once); trust set 42 + clamps
+  250→100 / −5→0; deactivate blocks login, reactivate restores it,
+  self-deactivate → 400; cancel PENDING session, re-cancel → 400;
+  message delete; full review cycle (new completed session → 3★ review →
+  trust 80 → admin delete → trust 100); admin never in matches/community;
+  **non-admin gets 403 on all 11 admin endpoints**.
+- Visual check: headless-Chromium screenshots of the admin panel and the
+  user-detail view (desktop) plus the redesigned auth/signup/dashboard/
+  profile-modal (desktop + 390px) — all reviewed, layout clean, no
+  overflow, correct scores (Priya 78%, Leo 60%).
+
 ## Verification (all actually run by the coordinator unless noted)
 
 Backend — fresh database, run by the coordinator on 2026-11-10:
@@ -182,6 +255,12 @@ Frontend — run by the coordinator on 2026-11-10 (after the rebrand edit):
    everywhere user-facing (UI header, landing/login screen, page title,
    README, docs). Internal identifiers (`skillswap_access` keys, event names,
    package names) still use the short form — they are never shown to users.
+8. **Admin Panel (user-ordered, 2026-11-10):** not in the SRS/SDD. Added
+   staff-only `/api/admin/` endpoints + an Admin Panel UI (stats, user
+   management incl. password reset/trust override/message delete/session
+   cancel, review moderation). The `admin` demo account is staff/superuser
+   and is excluded from matching. The matcher lock in `get_matcher()` is a
+   thread-safety fix only — scores, threshold and model unchanged.
 
 ## Deliberately left out
 

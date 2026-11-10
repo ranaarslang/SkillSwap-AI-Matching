@@ -8,6 +8,8 @@ interface Props {
   isMatch: boolean
   onClose: () => void
   onMessage: (profile: MatchProfile) => void
+  /** Admin profile views hide the match score — it is meaningless there. */
+  hideScore?: boolean
 }
 
 /**
@@ -15,7 +17,7 @@ interface Props {
  * out — bio, location, availability, trust score, teach/learn skills,
  * recent reviews, and a prominent Message button.
  */
-export default function ProfileModal({ profile, isMatch, onClose, onMessage }: Props) {
+export default function ProfileModal({ profile, isMatch, onClose, onMessage, hideScore = false }: Props) {
   const [reviews, setReviews] = useState<Review[] | null>(null)
 
   useEffect(() => {
@@ -75,7 +77,8 @@ export default function ProfileModal({ profile, isMatch, onClose, onMessage }: P
               </div>
               <p className="text-sm text-indigo-200">@{profile.user.username}</p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                {isMatch ? <ScoreBadge score={profile.match_score} /> : <span className="rounded-full bg-white/15 px-2.5 py-1 text-xs font-semibold text-white">below 50% match</span>}
+                {!hideScore &&
+                  (isMatch ? <ScoreBadge score={profile.match_score} /> : <span className="rounded-full bg-white/15 px-2.5 py-1 text-xs font-semibold text-white">below 50% match</span>)}
                 <TrustBadge score={profile.trust_score} />
               </div>
             </div>

@@ -24,6 +24,7 @@ export interface User {
   username: string
   full_name: string
   email: string
+  is_staff?: boolean
 }
 
 export interface Profile {
@@ -81,6 +82,38 @@ export interface Review {
   session_id: number
   rating_stars: number
   feedback_text: string
+  // Returned by the API (ReviewSerializer) — used by the admin reviews list.
+  session?: number
+  reviewer?: User
+  reviewee?: User
+  created_at?: string
+}
+
+// ---- Admin (staff only) ----------------------------------------------------
+export interface AdminStats {
+  total_users: number
+  total_students: number
+  total_sessions: number
+  sessions_pending: number
+  sessions_accepted: number
+  sessions_completed: number
+  sessions_cancelled: number
+  total_messages: number
+  total_reviews: number
+  average_trust_score: number
+}
+
+export interface AdminUser extends Profile {
+  is_active: boolean
+  is_staff: boolean
+  date_joined: string
+}
+
+export interface AdminUserDetail extends AdminUser {
+  sessions: SessionItem[]
+  reviews_received: Review[]
+  reviews_given: Review[]
+  recent_messages: ChatMessage[]
 }
 
 export class ApiError extends Error {
@@ -204,6 +237,29 @@ export const api = {
   createReview: (body: { session_id: number; rating_stars: number; feedback_text: string }) =>
     request<Review>('/reviews/', { method: 'POST', body: JSON.stringify(body) }),
   getReviews: (userId: number) => request<Review[]>(`/reviews/?user=${userId}`),
+  // Admin (staff only — the API returns 403 for non-staff users)
+  getAdminStats: () => request<AdminStats>('/admin/stats/'),
+  getAdminUsers: (q?: string) =>
+    request<AdminUser[]>(`/admin/users/${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  getAdminUserDetail: (userId: number) => request<AdminUserDetail>(`/admin/users/${userId}/`),
+  adminToggleUserActive: (userId: number) =>
+    request<AdminUser>(`/admin/users/${userId}/toggle-active/`, { method: 'POST', body: JSON.stringify({}) }),
+  adminResetPassword: (userId: number, password?: string) =>
+    request<{ detail: string; temporary_password: string; generated: boolean; advise: string }>(
+      `/admin/users/${userId}/reset-password/`,
+      { method: 'POST', body: JSON.stringify(password ? { password } : {}) },
+    ),
+  adminSetTrust: (userId: number, trust_score: number) =>
+    request<AdminUser>(`/admin/users/${userId}/set-trust/`, { method: 'POST', body: JSON.stringify({ trust_score }) }),
+  getAdminSessions: (status?: string) =>
+    request<SessionItem[]>(`/admin/sessions/${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+  adminCancelSession: (sessionId: number) =>
+    request<SessionItem>(`/admin/sessions/${sessionId}/cancel/`, { method: 'POST', body: JSON.stringify({}) }),
+  getAdminReviews: () => request<Review[]>('/admin/reviews/'),
+  adminDeleteReview: (reviewId: number) =>
+    request<{ detail: string; target_user_id: number; trust_score: number }>(`/admin/reviews/${reviewId}/`, { method: 'DELETE' }),
+  adminDeleteMessage: (messageId: number) =>
+    request<{ detail: string }>(`/admin/messages/${messageId}/`, { method: 'DELETE' }),
 }
 
 // ---- WebSocket live chat helper -------------------------------------------

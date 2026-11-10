@@ -4,11 +4,11 @@ import re
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.contrib.auth import authenticate, get_user_model
-from django.db.models import Q
+from django.db.models import Avg, Q
 from django.utils.text import slugify
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -56,6 +56,7 @@ def _user_payload(user):
         "username": user.username,
         "full_name": full_name_of(user),
         "email": user.email,
+        "is_staff": bool(user.is_staff),
     }
 
 
@@ -236,7 +237,8 @@ def _scored_profiles(me):
     )
     candidates = []
     profiles = {}
-    for user in User.objects.exclude(id=me.id).order_by("username"):
+    # Staff/admin accounts are not students — they never appear as matches.
+    for user in User.objects.exclude(id=me.id).filter(is_staff=False).order_by("username"):
         profile, _ = Profile.objects.get_or_create(user=user)
         profiles[user.id] = profile
         candidates.append(CandidateSkills(
@@ -536,3 +538,226 @@ def reviews(request):
     return Response(
         ReviewSerializer(review).data, status=status.HTTP_201_CREATED
     )
+
+
+# ---------------------------------------------------------------- admin
+# Staff-only management endpoints. IsAdminUser requires is_staff; the
+# admin demo account (seed_demo.py) is a staff superuser. Public
+# endpoints above are untouched by this section.
+def _admin_user_data(user):
+    """Full profile payload + account flags for the admin users table."""
+    profile, _ = Profile.objects.get_or_create(user=user)
+    data = ProfileSerializer(profile).data
+    data["is_active"] = user.is_active
+    data["is_staff"] = user.is_staff
+    data["date_joined"] = user.date_joined.isoformat()
+    return data
+
+
+@api_view(["GET"])
+@permission_classes([IsAdminUser])
+def admin_stats(request):
+    sessions = SwapSession.objects.all()
+    avg_trust = Profile.objects.aggregate(avg=Avg("trust_score"))["avg"]
+    return Response({
+        "total_users": User.objects.count(),
+        "total_students": User.objects.filter(is_staff=False).count(),
+        "total_sessions": sessions.count(),
+        "sessions_pending": sessions.filter(
+            session_status=SwapSession.Status.PENDING).count(),
+        "sessions_accepted": sessions.filter(
+            session_status=SwapSession.Status.ACCEPTED).count(),
+        "sessions_completed": sessions.filter(
+            session_status=SwapSession.Status.COMPLETED).count(),
+        "sessions_cancelled": sessions.filter(
+            session_status=SwapSession.Status.CANCELLED).count(),
+        "total_messages": ChatMessage.objects.count(),
+        "total_reviews": IntegrityReview.objects.count(),
+        "average_trust_score": round(avg_trust, 1) if avg_trust is not None else 100,
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAdminUser])
+def admin_users(request):
+    q = (request.query_params.get("q") or "").strip()
+    qs = User.objects.all().order_by("username")
+    if q:
+        qs = qs.filter(
+            Q(username__icontains=q)
+            | Q(email__icontains=q)
+            | Q(first_name__icontains=q)
+            | Q(last_name__icontains=q)
+        )
+    return Response([_admin_user_data(u) for u in qs])
+
+
+@api_view(["POST"])
+@permission_classes([IsAdminUser])
+def admin_toggle_user_active(request, user_id):
+    try:
+        user = User.objects.get(id=user_id)
+    except (User.DoesNotExist, ValueError, TypeError):
+        return Response({"detail": "User not found."}, status=404)
+    if user.id == request.user.id:
+        return Response(
+            {"detail": "You cannot deactivate your own admin account."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    user.is_active = not user.is_active
+    user.save(update_fields=["is_active"])
+    return Response(_admin_user_data(user))
+
+
+@api_view(["GET"])
+@permission_classes([IsAdminUser])
+def admin_sessions(request):
+    status_filter = (request.query_params.get("status") or "").strip().upper()
+    qs = SwapSession.objects.all().order_by("-created_at")
+    if status_filter:
+        qs = qs.filter(session_status=status_filter)
+    return Response(SessionSerializer(qs, many=True).data)
+
+
+@api_view(["GET"])
+@permission_classes([IsAdminUser])
+def admin_reviews(request):
+    qs = IntegrityReview.objects.all().order_by("-created_at")
+    return Response(ReviewSerializer(qs, many=True).data)
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAdminUser])
+def admin_delete_review(request, review_id):
+    try:
+        review = IntegrityReview.objects.get(id=review_id)
+    except (IntegrityReview.DoesNotExist, ValueError, TypeError):
+        return Response({"detail": "Review not found."}, status=404)
+    target = review.target_user
+    review.delete()
+    new_trust = recalculate_trust_score(target)
+    return Response({
+        "detail": "Review deleted.",
+        "target_user_id": target.id,
+        "trust_score": new_trust,
+    })
+
+
+# ---------------------------------------------------------------- admin (2)
+# Issue-resolution powers: user detail, password reset, trust override,
+# message deletion, session cancellation. All IsAdminUser.
+def _admin_user_detail_data(user):
+    """Full record for investigating one user: profile + sessions +
+    reviews received/given + recent messages."""
+    profile, _ = Profile.objects.get_or_create(user=user)
+    data = _admin_user_data(user)
+    sessions = SwapSession.objects.filter(
+        Q(partner_one=user) | Q(partner_two=user)
+    ).order_by("-created_at")
+    data["sessions"] = SessionSerializer(sessions, many=True).data
+    data["reviews_received"] = ReviewSerializer(
+        IntegrityReview.objects.filter(target_user=user).order_by("-created_at"),
+        many=True,
+    ).data
+    data["reviews_given"] = ReviewSerializer(
+        IntegrityReview.objects.filter(author_user=user).order_by("-created_at"),
+        many=True,
+    ).data
+    msgs = ChatMessage.objects.filter(
+        Q(sender=user) | Q(receiver=user)
+    ).order_by("-sent_at")[:20]
+    data["recent_messages"] = [_message_payload(m, user) for m in msgs]
+    return data
+
+
+@api_view(["GET"])
+@permission_classes([IsAdminUser])
+def admin_user_detail(request, user_id):
+    try:
+        user = User.objects.get(id=user_id)
+    except (User.DoesNotExist, ValueError, TypeError):
+        return Response({"detail": "User not found."}, status=404)
+    return Response(_admin_user_detail_data(user))
+
+
+@api_view(["POST"])
+@permission_classes([IsAdminUser])
+def admin_reset_password(request, user_id):
+    import secrets
+    import string
+
+    try:
+        user = User.objects.get(id=user_id)
+    except (User.DoesNotExist, ValueError, TypeError):
+        return Response({"detail": "User not found."}, status=404)
+    password = (request.data.get("password") or "").strip()
+    generated = False
+    if not password:
+        alphabet = string.ascii_letters + string.digits
+        password = "Temp-" + "".join(secrets.choice(alphabet) for _ in range(8))
+        generated = True
+    if len(password) < 6:
+        return Response(
+            {"detail": "Password must be at least 6 characters."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    user.set_password(password)
+    user.save(update_fields=["password"])
+    return Response({
+        "detail": f"Password reset for {user.username}.",
+        "temporary_password": password,
+        "generated": generated,
+        "advise": "Share this once with the user and ask them to change it after login.",
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsAdminUser])
+def admin_set_trust(request, user_id):
+    try:
+        user = User.objects.get(id=user_id)
+    except (User.DoesNotExist, ValueError, TypeError):
+        return Response({"detail": "User not found."}, status=404)
+    try:
+        value = int(request.data.get("trust_score"))
+    except (TypeError, ValueError):
+        return Response(
+            {"detail": "trust_score must be an integer."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    value = max(0, min(100, value))  # clamp 0-100
+    profile, _ = Profile.objects.get_or_create(user=user)
+    profile.trust_score = value
+    profile.save(update_fields=["trust_score"])
+    return Response(_admin_user_data(user))
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAdminUser])
+def admin_delete_message(request, message_id):
+    try:
+        message = ChatMessage.objects.get(id=message_id)
+    except (ChatMessage.DoesNotExist, ValueError, TypeError):
+        return Response({"detail": "Message not found."}, status=404)
+    message.delete()
+    return Response({"detail": "Message deleted."})
+
+
+@api_view(["POST"])
+@permission_classes([IsAdminUser])
+def admin_cancel_session(request, session_id):
+    try:
+        session = SwapSession.objects.get(id=session_id)
+    except (SwapSession.DoesNotExist, ValueError, TypeError):
+        return Response({"detail": "Session not found."}, status=404)
+    if session.session_status not in (
+        SwapSession.Status.PENDING,
+        SwapSession.Status.ACCEPTED,
+    ):
+        return Response(
+            {"detail": f"Cannot cancel a session with status {session.session_status}."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    session.session_status = SwapSession.Status.CANCELLED
+    session.save(update_fields=["session_status"])
+    return Response(SessionSerializer(session).data)
