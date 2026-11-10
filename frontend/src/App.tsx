@@ -4,7 +4,8 @@ import ProfilePanel from './components/ProfilePanel'
 import Dashboard from './components/Dashboard'
 import ChatHub from './components/ChatHub'
 import FeedbackHub from './components/FeedbackHub'
-import { Avatar } from './components/ui'
+import ProfileModal from './components/ProfileModal'
+import { Avatar, IconChat, IconLogout, IconSpark, IconStar, IconSwap, IconUser } from './components/ui'
 import {
   api,
   ApiError,
@@ -19,11 +20,11 @@ import type { ChatMessage, Conversation, MatchProfile, Profile, SessionItem, Use
 
 type Tab = 'profile' | 'dashboard' | 'chat' | 'feedback'
 
-const TABS: { id: Tab; label: string; short: string; icon: string }[] = [
-  { id: 'profile', label: 'Create Your Skill Account', short: 'Account', icon: '👤' },
-  { id: 'dashboard', label: 'AI Match Dashboard', short: 'Matches', icon: '🤖' },
-  { id: 'chat', label: 'Chat & Scheduler Hub', short: 'Chat', icon: '💬' },
-  { id: 'feedback', label: 'Session Feedback Hub', short: 'Feedback', icon: '⭐' },
+const TABS: { id: Tab; label: string; short: string; Icon: (p: { className?: string }) => JSX.Element }[] = [
+  { id: 'profile', label: 'Create Your Skill Account', short: 'Account', Icon: IconUser },
+  { id: 'dashboard', label: 'AI Match Dashboard', short: 'Matches', Icon: IconSpark },
+  { id: 'chat', label: 'Chat & Scheduler Hub', short: 'Chat', Icon: IconChat },
+  { id: 'feedback', label: 'Session Feedback Hub', short: 'Feedback', Icon: IconStar },
 ]
 
 export default function App() {
@@ -51,6 +52,7 @@ export default function App() {
   const [loadError, setLoadError] = useState('')
   const [wsStatus, setWsStatus] = useState<WsStatus>('offline')
   const [toast, setToast] = useState('')
+  const [viewingProfile, setViewingProfile] = useState<{ profile: MatchProfile; isMatch: boolean } | null>(null)
   const socketRef = useRef<ChatSocket | null>(null)
   const selectedPeerRef = useRef<User | null>(null)
   selectedPeerRef.current = selectedPeer
@@ -106,6 +108,7 @@ export default function App() {
     setConversations([])
     setSelectedPeer(null)
     setMessages([])
+    setViewingProfile(null)
     setTab('dashboard')
   }, [])
 
@@ -176,6 +179,7 @@ export default function App() {
   }
 
   function openChatWith(peerProfile: MatchProfile) {
+    setViewingProfile(null)
     setSelectedPeer(peerProfile.user)
     setTab('chat')
     selectPeer(peerProfile.user)
@@ -205,12 +209,18 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-surface">
       {/* Top bar — flex-wrap so the search input stays visible on phone widths */}
-      <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center gap-3">
-          <button onClick={() => setTab('dashboard')} className="text-xl font-extrabold text-indigo-600 shrink-0">
-            Skill Swap Platform with AI Matching
+      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3">
+          <button onClick={() => setTab('dashboard')} className="flex shrink-0 items-center gap-2.5 text-left" aria-label="Skill Swap Platform with AI Matching — go to dashboard">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-sm">
+              <IconSwap className="h-5 w-5" />
+            </span>
+            <span className="leading-tight">
+              <span className="block text-[15px] font-bold tracking-tight text-slate-900">Skill Swap Platform</span>
+              <span className="block text-[11px] font-semibold uppercase tracking-wider text-indigo-600">with AI Matching</span>
+            </span>
           </button>
           <input
             type="search"
@@ -218,50 +228,71 @@ export default function App() {
             onChange={(e) => handleSearchChange(e.target.value)}
             placeholder="Search people, skills…"
             aria-label="Search matches"
-            className="search flex-1 min-w-[160px] rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="search min-w-[160px] flex-1 rounded-lg border border-slate-300 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
-          <div className="flex items-center gap-2 shrink-0 ml-auto">
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             <Avatar user={user} color={profile?.avatar_color} size="sm" />
-            <span className="hidden sm:block text-sm font-semibold text-slate-700">{displayName(user)}</span>
+            <span className="hidden text-sm font-semibold text-slate-700 sm:block">{displayName(user)}</span>
           </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 py-6 pb-24 md:pb-10 flex gap-6">
+      <div className="mx-auto flex max-w-7xl gap-6 px-4 pb-24 pt-6 md:pb-10">
         {/* Persistent left sidebar (desktop) */}
-        <nav className="hidden md:block w-60 shrink-0" aria-label="Main">
-          <div className="sticky top-20 space-y-1">
-            <ul className="space-y-1">
-              {TABS.map((t) => (
-                <li key={t.id}>
-                  <button
-                    onClick={() => setTab(t.id)}
-                    aria-current={tab === t.id ? 'page' : undefined}
-                    className={`w-full text-left rounded-lg px-4 py-2.5 text-sm font-semibold flex items-center gap-3 ${
-                      tab === t.id ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    <span aria-hidden>{t.icon}</span> {t.label}
-                    {t.id === 'chat' && unreadTotal > 0 && (
-                      <span className="ml-auto rounded-full bg-red-500 text-white text-[11px] font-bold px-2 py-0.5">{unreadTotal}</span>
-                    )}
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <button
-              onClick={handleLogout}
-              className="w-full text-left rounded-lg px-4 py-2.5 text-sm font-semibold flex items-center gap-3 text-red-700 hover:bg-red-50 mt-4"
-            >
-              <span aria-hidden>🚪</span> Log out
-            </button>
+        <nav className="hidden w-64 shrink-0 md:block" aria-label="Main">
+          <div className="sticky top-[76px] space-y-6">
+            <div>
+              <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Menu</p>
+              <ul className="space-y-1">
+                {TABS.map((t) => (
+                  <li key={t.id}>
+                    <button
+                      onClick={() => setTab(t.id)}
+                      aria-current={tab === t.id ? 'page' : undefined}
+                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
+                        tab === t.id ? 'bg-indigo-50 text-indigo-700 shadow-sm ring-1 ring-inset ring-indigo-100' : 'text-slate-600 hover:bg-white hover:text-slate-900'
+                      }`}
+                    >
+                      <t.Icon className="h-5 w-5 shrink-0" />
+                      {t.label}
+                      {t.id === 'chat' && unreadTotal > 0 && (
+                        <span className="ml-auto rounded-full bg-red-500 px-2 py-0.5 text-[11px] font-bold text-white">{unreadTotal}</span>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center gap-3">
+                <Avatar user={user} color={profile?.avatar_color} />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-slate-900">{displayName(user)}</p>
+                  <p className="truncate text-xs text-slate-500">{user.email}</p>
+                  {profile && (
+                    <p className="mt-0.5 text-xs font-semibold text-slate-500">
+                      ★ {profile.trust_score} trust{profile.verified_badge ? ' · ✓ Verified' : ''}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                <IconLogout className="h-4 w-4" /> Log out
+              </button>
+            </div>
+            <p className="px-3 text-[11px] leading-relaxed text-slate-400">
+              Skill Swap Platform with AI Matching — teach what you know, learn what you don&apos;t.
+            </p>
           </div>
         </nav>
 
         {/* Main content */}
-        <main className="flex-1 min-w-0">
+        <main className="min-w-0 flex-1">
           {toast && (
-            <div role="status" className="mb-4 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm px-4 py-2.5">
+            <div role="status" className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-700">
               {toast}
             </div>
           )}
@@ -284,6 +315,7 @@ export default function App() {
               searchQuery={searchQuery}
               onClearSearch={() => setSearchQuery('')}
               onConnect={openChatWith}
+              onViewProfile={(p) => setViewingProfile({ profile: p, isMatch: matches.some((m) => m.user.id === p.user.id) })}
               sessionCount={sessions.length}
               loading={loading}
               error={loadError}
@@ -312,18 +344,31 @@ export default function App() {
         </main>
       </div>
 
+      {/* Full profile modal */}
+      {viewingProfile && (
+        <ProfileModal
+          profile={viewingProfile.profile}
+          isMatch={viewingProfile.isMatch}
+          onClose={() => setViewingProfile(null)}
+          onMessage={openChatWith}
+        />
+      )}
+
       {/* Bottom nav (mobile) */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-slate-200" aria-label="Main mobile">
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white md:hidden" aria-label="Main mobile">
         <ul className="grid grid-cols-4">
           {TABS.map((t) => (
             <li key={t.id}>
               <button
                 onClick={() => setTab(t.id)}
                 aria-current={tab === t.id ? 'page' : undefined}
-                className={`w-full py-3 text-[11px] font-semibold flex flex-col items-center gap-0.5 ${tab === t.id ? 'text-indigo-600' : 'text-slate-500'}`}
+                className={`relative flex w-full flex-col items-center gap-0.5 py-3 text-[11px] font-semibold ${tab === t.id ? 'text-indigo-600' : 'text-slate-500'}`}
               >
-                <span aria-hidden className="text-lg leading-none">{t.icon}</span>
+                <t.Icon className="h-5 w-5" />
                 {t.short}
+                {t.id === 'chat' && unreadTotal > 0 && (
+                  <span className="absolute right-4 top-1.5 rounded-full bg-red-500 px-1.5 py-px text-[10px] font-bold text-white">{unreadTotal}</span>
+                )}
               </button>
             </li>
           ))}

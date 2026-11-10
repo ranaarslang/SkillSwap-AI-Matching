@@ -70,12 +70,35 @@ def _unique_username(email):
     return username
 
 
+def _clean_skill_names(raw):
+    """Trim, dedupe (case-insensitive) and cap a list of skill names."""
+    seen = set()
+    out = []
+    if not isinstance(raw, (list, tuple)):
+        return out
+    for item in raw:
+        name = str(item).strip()
+        if name and len(name) <= 120 and name.lower() not in seen:
+            seen.add(name.lower())
+            out.append(name)
+    return out[:20]
+
+
+def _create_skills(user, names, skill_type):
+    for name in _clean_skill_names(names):
+        UserSkill.objects.get_or_create(
+            user=user, skill_name=name, skill_type=skill_type
+        )
+
+
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def signup(request):
     email = (request.data.get("email") or "").strip().lower()
     password = request.data.get("password") or ""
     full_name = (request.data.get("full_name") or "").strip()
+    teach_skills = _clean_skill_names(request.data.get("teach_skills"))
+    learn_skills = _clean_skill_names(request.data.get("learn_skills"))
     errors = {}
     if not email or "@" not in email:
         errors["email"] = "A valid email is required."
@@ -85,6 +108,10 @@ def signup(request):
         errors["password"] = "Password must be at least 6 characters."
     if not full_name:
         errors["full_name"] = "Full name is required."
+    if not teach_skills:
+        errors["teach_skills"] = "Pick at least one skill you can teach."
+    if not learn_skills:
+        errors["learn_skills"] = "Pick at least one skill you want to learn."
     if errors:
         return Response(errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -98,6 +125,8 @@ def signup(request):
         last_name=parts[1] if len(parts) > 1 else "",
     )
     Profile.objects.get_or_create(user=user)
+    _create_skills(user, teach_skills, UserSkill.SkillType.TEACH)
+    _create_skills(user, learn_skills, UserSkill.SkillType.LEARN)
     payload = _tokens_for(user)
     payload["user"] = _user_payload(user)
     return Response(payload, status=status.HTTP_201_CREATED)

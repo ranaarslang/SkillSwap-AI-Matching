@@ -60,7 +60,7 @@ export default function FeedbackHub({ sessions, currentUserId, peerProfiles, loa
   return (
     <div className="max-w-2xl space-y-6">
       <div>
-        <h1 className="text-xl font-extrabold text-slate-900">Session Feedback Hub</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Session Feedback Hub</h1>
         <p className="text-sm text-slate-500">Rate a completed session — your feedback updates your partner&apos;s trust score.</p>
       </div>
 
@@ -73,12 +73,12 @@ export default function FeedbackHub({ sessions, currentUserId, peerProfiles, loa
       {loading ? (
         <p className="text-slate-500 text-sm">Loading your sessions…</p>
       ) : completedPartners.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-10 text-center">
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-10 text-center">
           <p className="font-semibold text-slate-800">No completed sessions yet</p>
           <p className="text-sm text-slate-500 mt-1">Once a session is marked complete, your partner will appear here for review.</p>
         </div>
       ) : (
-        <form onSubmit={submit} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+        <form onSubmit={submit} className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1" htmlFor="fb-partner">Partner (completed sessions only)</label>
             <select

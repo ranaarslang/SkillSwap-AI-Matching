@@ -174,7 +174,7 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
 }
 
 export const api = {
-  signup: (body: { email: string; password: string; full_name: string }) =>
+  signup: (body: { email: string; password: string; full_name: string; teach_skills: string[]; learn_skills: string[] }) =>
     request<{ access: string; refresh: string; user: User }>('/auth/signup/', { method: 'POST', body: JSON.stringify(body) }),
   login: (body: { email_or_username: string; password: string }) =>
     request<{ access: string; refresh: string; user: User }>('/auth/login/', { method: 'POST', body: JSON.stringify(body) }),

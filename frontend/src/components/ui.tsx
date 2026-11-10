@@ -1,11 +1,57 @@
 import type { User } from '../api'
 import { displayName, initials } from '../api'
 
+// ---- Inline SVG icons (professional, no emoji in the nav) -----------------
+function Svg({ d, className = 'h-5 w-5' }: { d: string; className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <path d={d} />
+    </svg>
+  )
+}
+
+export const IconUser = ({ className }: { className?: string }) => (
+  <Svg className={className} d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+)
+
+export const IconSpark = ({ className }: { className?: string }) => (
+  <Svg className={className} d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" />
+)
+
+export const IconChat = ({ className }: { className?: string }) => (
+  <Svg className={className} d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+)
+
+export const IconStar = ({ className }: { className?: string }) => (
+  <Svg className={className} d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+)
+
+export const IconLogout = ({ className }: { className?: string }) => (
+  <Svg className={className} d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
+)
+
+export const IconClose = ({ className }: { className?: string }) => (
+  <Svg className={className} d="M18 6L6 18M6 6l12 12" />
+)
+
+export const IconPin = ({ className }: { className?: string }) => (
+  <Svg className={className} d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0zM15 10a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" />
+)
+
+export const IconCheck = ({ className }: { className?: string }) => (
+  <Svg className={className} d="M20 6L9 17l-5-5" />
+)
+
+export const IconSwap = ({ className }: { className?: string }) => (
+  <Svg className={className} d="M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3" />
+)
+
+// ---- Primitives ------------------------------------------------------------
 export function Avatar({ user, color, size = 'md' }: { user: User; color?: string; size?: 'sm' | 'md' | 'lg' }) {
   const cls = size === 'lg' ? 'h-16 w-16 text-xl' : size === 'sm' ? 'h-8 w-8 text-xs' : 'h-11 w-11 text-sm'
   return (
     <div
-      className={`${cls} shrink-0 rounded-full flex items-center justify-center font-bold text-white`}
+      className={`${cls} shrink-0 rounded-full flex items-center justify-center font-bold text-white ring-2 ring-white shadow-sm`}
       style={{ backgroundColor: color || '#4F46E5' }}
       aria-hidden
     >
@@ -14,14 +60,14 @@ export function Avatar({ user, color, size = 'md' }: { user: User; color?: strin
   )
 }
 
-export function Chip({ children, tone = 'indigo' }: { children: React.ReactNode; tone?: 'indigo' | 'amber' }) {
-  const cls = tone === 'amber' ? 'bg-amber-50 text-amber-700' : 'bg-indigo-50 text-indigo-700'
-  return <span className={`inline-block rounded-full ${cls} text-xs font-medium px-2.5 py-1`}>{children}</span>
+export function Chip({ children, tone = 'indigo' }: { children: React.ReactNode; tone?: 'indigo' | 'emerald' }) {
+  const cls = tone === 'emerald' ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' : 'bg-indigo-50 text-indigo-700 ring-indigo-600/20'
+  return <span className={`inline-block rounded-full ring-1 ring-inset ${cls} text-xs font-medium px-2.5 py-1`}>{children}</span>
 }
 
 export function ScoreBadge({ score }: { score: number }) {
   return (
-    <span className="inline-flex items-center rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-1">
+    <span className="inline-flex items-center rounded-full bg-emerald-600 text-white text-xs font-bold px-2.5 py-1 shadow-sm">
       {score}% match
     </span>
   )
@@ -29,7 +75,7 @@ export function ScoreBadge({ score }: { score: number }) {
 
 export function TrustBadge({ score }: { score: number }) {
   return (
-    <span className="inline-flex items-center rounded-full bg-sky-100 text-sky-800 text-xs font-bold px-2.5 py-1" title="Trust score (0–100)">
+    <span className="inline-flex items-center rounded-full bg-white text-slate-700 ring-1 ring-inset ring-slate-200 text-xs font-semibold px-2.5 py-1" title="Trust score (0–100)">
       ★ {score} trust
     </span>
   )
@@ -37,7 +83,7 @@ export function TrustBadge({ score }: { score: number }) {
 
 export function VerifiedBadge() {
   return (
-    <span className="inline-flex items-center rounded-full bg-indigo-600 text-white text-xs font-bold px-2.5 py-1" title="Verified account">
+    <span className="inline-flex items-center gap-1 rounded-full bg-indigo-600 text-white text-xs font-bold px-2.5 py-1" title="Verified account">
       ✓ Verified
     </span>
   )

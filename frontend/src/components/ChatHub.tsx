@@ -115,11 +115,11 @@ export default function ChatHub(props: Props) {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-xl font-extrabold text-slate-900">Chat &amp; Scheduler Hub</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Chat &amp; Scheduler Hub</h1>
         <p className="text-sm text-slate-500">Message your matches, then lock in a swap session.</p>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="grid md:grid-cols-[300px_1fr] min-h-[480px]">
           {/* Conversation list */}
           <aside className={`border-b md:border-b-0 md:border-r border-slate-200 ${selectedPeer ? 'hidden md:block' : ''}`}>
@@ -212,7 +212,7 @@ export default function ChatHub(props: Props) {
                       const mine = m.is_mine || m.sender.id === props.currentUserId
                       return (
                         <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                          <div className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm ${mine ? 'bg-indigo-600 text-white rounded-br-sm' : 'bg-slate-100 text-slate-800 rounded-bl-sm'}`}>
+                          <div className={`max-w-[75%] rounded-xl px-3.5 py-2 text-sm ${mine ? 'bg-indigo-600 text-white rounded-br-sm' : 'bg-slate-100 text-slate-800 rounded-bl-sm'}`}>
                             <p className="whitespace-pre-wrap break-words">{m.body}</p>
                             <p className={`text-[11px] mt-1 ${mine ? 'text-indigo-200' : 'text-slate-400'}`}>
                               {new Date(m.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
@@ -297,7 +297,7 @@ export default function ChatHub(props: Props) {
               const other = otherPerson(s, props.currentUserId)
               const iAmPartnerTwo = s.partner_two.id === props.currentUserId
               return (
-                <article key={s.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                <article key={s.id} className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
                   <div className="flex items-start gap-3">
                     <Avatar user={other} color={props.peerProfiles.get(other.id)?.avatar_color} />
                     <div className="min-w-0 flex-1">

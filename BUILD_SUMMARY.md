@@ -42,7 +42,7 @@ backend, React + TypeScript + Vite + Tailwind frontend, SQLite.
 | Endpoint | Notes |
 |---|---|
 | `GET /api/health/` | `{"status": "ok"}`, no auth |
-| `POST /api/auth/signup/` `{email, password, full_name}` | 201 `{access, refresh, user}` |
+| `POST /api/auth/signup/` `{email, password, full_name, teach_skills, learn_skills}` | 201 `{access, refresh, user}` — **teach_skills and learn_skills are required** (≥1 each, arrays; trimmed, deduped, max 20 each); missing/empty → 400 naming the field. Creates the USER_SKILL rows at registration. |
 | `POST /api/auth/login/` `{email_or_username, password}` | 200 `{access, refresh, user}` |
 | `POST /api/auth/refresh/` `{refresh}` | 200 `{access}` |
 | `POST /api/auth/logout/` | 200 (client discards tokens; JWTs are stateless) |
@@ -57,6 +57,68 @@ backend, React + TypeScript + Vite + Tailwind frontend, SQLite.
 | `POST /api/reviews/` `{session_id, rating_stars, feedback_text}` | Completed-session partners only; one per session per author |
 | `GET /api/reviews/?user=<id>` | Reviews for a user |
 | `ws:///ws/chat/?token=<JWT>` | Live chat; invalid token → close 4401 |
+
+## Redesign + signup skills step (2026-11-10, user feedback)
+
+The user said the first theme did not look professional, and that sign-up
+must capture what a new user can teach and wants to learn, so both learners
+and teachers can see it on a profile and contact the person. Changes:
+
+- **Professional theme (whole frontend):** Inter typeface (Google Fonts,
+  system fallback), refined hierarchy (bold tracking-tight headings,
+  uppercase micro-labels), warm neutral surface `#F6F7F9`, white cards
+  with `rounded-xl` + soft shadow + hover lift, restrained indigo
+  `#4F46E5` as the only brand accent. Inline SVG icons replaced the emoji
+  nav. Header has a logo mark + two-line wordmark; desktop sidebar has a
+  MENU section and a user card (avatar, name, email, trust score, log
+  out); mobile bottom nav kept. Auth screen is now a split layout on
+  desktop (indigo brand panel with the product promise + 3 features,
+  form card on the right). No dead buttons.
+- **Signup skills step:** sign-up is now 2 steps — Step 1 account
+  (name/email/password), Step 2 skills. `SkillPicker` (`src/components/SkillPicker.tsx`)
+  offers a curated catalog of 36 skills in 5 groups (Programming & Tech,
+  Design & Media, Languages, Music & Arts, Business & Life) as toggle
+  chips PLUS a free-text "add your own skill" input. At least **1 teach
+  skill AND 1 learn skill are required** (inline validation in the form,
+  400 from the API). Backend `signup` validates and creates the
+  `USER_SKILL` rows at registration (see the endpoint table). New users'
+  skills feed the existing ML matcher unchanged — a new user shows up in
+  matches/community immediately.
+- **Profile visibility + contact:** match/community cards show teach
+  ("Can teach you") and learn ("Wants to learn") chips and have both a
+  **Message** button and a **View profile** button; clicking a card's name
+  or avatar also opens the full profile. `ProfileModal`
+  (`src/components/ProfileModal.tsx`) shows bio, location, availability,
+  trust score, teach/learn skills, same-city bonus, portfolio link and
+  recent reviews, with a prominent **Message** button that opens a chat
+  conversation with that user (REST `POST /api/messages/` + live WS).
+  Profile editing now uses the same `SkillPicker` (replacing the old
+  comma-separated text inputs) and enforces ≥1 teach + ≥1 learn skill.
+- **Matcher / threshold / JWT untouched.** Only the signup contract, the
+  profile editor, the new modal/picker components and the theme changed.
+
+### Verification (redesign round, coordinator, 2026-11-10)
+
+- Frontend `npm run build` (strict TS + Vite) passes; deploy ZIP rebuilt
+  with `VITE_API_URL=https://skillswap-v2-backend.onrender.com/api`.
+- Backend `manage.py check` clean; fresh-DB `migrate` clean; `seed_demo`
+  clean (6 users, 3 sessions, 1 review, 4 messages).
+- Local Daphne (:8000) smoke script (`/tmp/skillswap-v2-verify2.py`):
+  **15/16 passed** — signup without skills → 400 naming both fields;
+  signup with only teach → 400 naming learn; signup with skills
+  (incl. duplicate/case variants + a custom skill "Calligraphy") → 201,
+  rows land deduped/trimmed in the DB; profile shows the skills; maya
+  login still works; new user appears in maya's matches/community with
+  skills visible; public profile endpoint returns the skills; profile
+  skill edit saves; message POST to the new user → 201, history and
+  conversations thread work. The 1 non-pass was the test's own strict
+  expectation: local scores were Priya **78** / Leo **60** vs live 79/59
+  — the known ±1 qint8 quantization variance (matcher untouched; the
+  live Render scores are the reference).
+- Visual check: screenshots of the rebuilt frontend (login + dashboard at
+  desktop and 390px widths) were taken with headless Chromium against the
+  local preview — see the report handed to the parent. The parent still
+  needs to do the live-browser click-through on the deployed link.
 
 ## Verification (all actually run by the coordinator unless noted)
 
@@ -111,7 +173,12 @@ Frontend — run by the coordinator on 2026-11-10 (after the rebrand edit):
 4. **Logout:** JWTs are stateless, so the server cannot revoke an access
    token; `POST /api/auth/logout/` returns 200 and the client discards its
    tokens (documented in `backend/NOTES.md`).
-5. **Branding:** the exact name is "Skill Swap Platform with AI Matching"
+6. **Signup requires skills (user-required, 2026-11-10):** the SRS signup
+   is email + password + full name. The user ordered that sign-up must also
+   capture what the user can teach and wants to learn, so both are required
+   at registration (≥1 teach + ≥1 learn skill). The profile editor enforces
+   the same rule. No other SRS behaviour changed.
+7. **Branding:** the exact name is "Skill Swap Platform with AI Matching"
    everywhere user-facing (UI header, landing/login screen, page title,
    README, docs). Internal identifiers (`skillswap_access` keys, event names,
    package names) still use the short form — they are never shown to users.
