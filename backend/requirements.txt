@@ -1,0 +1,12 @@
+# Skill Swap Platform with AI Matching — backend, Python 3.12, Django 5 + DRF + Channels.
+# Real ML matching: all-MiniLM-L6-v2 via ONNX Runtime (NO torch, NO
+# sentence-transformers package). See backend/NOTES.md for the model setup.
+Django>=5,<6
+djangorestframework>=3.15,<4
+django-cors-headers>=4.9,<5
+channels>=4,<5
+daphne>=4,<5
+djangorestframework-simplejwt>=5.5,<6
+scikit-learn>=1.5,<2
+onnxruntime>=1.17,<2
+transformers>=4.40,<5

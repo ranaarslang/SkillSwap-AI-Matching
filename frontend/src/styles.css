@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+/* NOTE: there is intentionally NO rule anywhere in this file that hides
+   .search (or any search input) under a max-width media query. The old
+   Skill Swap Platform with AI Matching bug was a CSS rule hiding the search box below 720px; the top
+   bar here wraps instead (see App.tsx header flex-wrap). */
+
+body {
+  background-color: #f8fafc;
+  color: #0f172a;
+}
