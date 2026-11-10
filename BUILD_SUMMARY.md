@@ -262,6 +262,28 @@ Frontend — run by the coordinator on 2026-11-10 (after the rebrand edit):
    cancel, review moderation). The `admin` demo account is staff/superuser
    and is excluded from matching. The matcher lock in `get_matcher()` is a
    thread-safety fix only — scores, threshold and model unchanged.
+9. **Database: env-based Postgres (Neon free tier), SQLite fallback
+   (user-approved, 2026-11-10):** the docs assume a database without
+   naming one. The live backend ran on a SQLite file with no persistent
+   disk on Render free tier, so every backend code deploy rebuilt the DB
+   from scratch (migrate + `seed_demo`) and wiped ALL live data — admin
+   password, signups, sessions, reviews. `backend/config/settings.py`
+   now reads `DATABASE_URL`: if set, it parses it with `urllib.parse`
+   (no new dependency) and uses `django.db.backends.postgresql`
+   (Neon: `postgres://user:pass@host:5432/dbname?sslmode=require`,
+   password percent-decoded, `sslmode` honoured from the query string,
+   bad scheme fails fast with a clear error); if unset, the previous
+   SQLite fallback is unchanged. `psycopg[binary]>=3.2,<4` added to
+   `backend/requirements.txt`. No models, auth, matching, admin or seed
+   code changed — `seed_demo` works on Postgres unchanged. Verified
+   2026-11-10: `manage.py check` clean with and without `DATABASE_URL`
+   (no live DB needed); with a test URL the engine is postgresql and
+   NAME/USER/HOST/PORT/sslmode parse correctly; no SQLite-specific code
+   remains outside the fallback. Deploy note: set `DATABASE_URL` in the
+   Render service env vars, then deploy (or redeploy) — the build runs
+   migrate + `seed_demo` on the Postgres DB, which seeds the demo users
+   (maya/leo/admin, demo1234) on the fresh DB. The admin password set
+   via Change Password then survives all future deploys.
 
 ## Fix round 2 — dedicated admin login, change password, seed fix, premium theme, distinct admin console (2026-11-10, user feedback)
 
@@ -384,14 +406,21 @@ from the student app. Changes:
   `06-admin-console-mobile`, `07-dashboard-desktop`, `08-profile-modal`,
   `09-profile-change-password`, `10-dashboard-mobile`).
 
-**Known caveat — admin password vs. redeploy:** the live backend uses a
-SQLite file DB with no persistent disk on Render free tier, so the DB is
-rebuilt from scratch (migrate + `seed_demo`) on every backend code
-deploy. The seed fix means a changed admin password survives `seed_demo`
-re-runs on a live DB, but it **reverts to demo1234 on the next backend
-code deploy** (fresh DB → admin is "first created" again) and can then be
-re-set in 30 seconds via the new Change Password UI. A persistent disk /
-external DB would fix it permanently (paid option — not decided).
+**Known caveat — admin password vs. redeploy (SUPERSEDED by the Neon
+shift, deviation 9):** the live backend used a SQLite file DB with no
+persistent disk on Render free tier, so the DB was rebuilt from scratch
+(migrate + `seed_demo`) on every backend code deploy. The seed fix means
+a changed admin password survives `seed_demo` re-runs on a live DB, but
+it **reverted to demo1234 on the next backend code deploy** (fresh DB →
+admin is "first created" again) and could then be re-set in 30 seconds
+via the new Change Password UI. **Fix in place (code, 2026-11-10):**
+settings are now env-based Postgres — once `DATABASE_URL` (Neon, free)
+is set in the Render service env vars and the backend is redeployed,
+the DB lives outside Render, survives deploys, and a password set via
+Change Password stays set. Until `DATABASE_URL` is set, the backend
+keeps running on SQLite and the old caveat still applies — do NOT set a
+permanent admin password before the Neon switch, or it will be wiped by
+the migration deploy itself.
 
 ## Deliberately left out
 

@@ -10,6 +10,7 @@ Env-based with safe local defaults:
 import os
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import parse_qs, unquote, urlparse
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -70,11 +71,40 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+def _database_config():
+    """DATABASE_URL set ho to Postgres (Neon free tier), warna local SQLite.
+
+    Neon connection string jaisi hoti hai:
+        postgres://user:password@host:5432/dbname?sslmode=require
+    Render par DATABASE_URL env var set karne se live backend Postgres
+    par chalega; local dev / bina env var ke pehle jaisa SQLite fallback.
+    """
+    url = os.environ.get("DATABASE_URL", "").strip()
+    if not url:
+        return {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    parsed = urlparse(url)
+    if parsed.scheme not in ("postgres", "postgresql"):
+        raise ValueError(
+            f"Unsupported DATABASE_URL scheme: {parsed.scheme!r} "
+            "(expected postgres:// or postgresql://)"
+        )
+    query = parse_qs(parsed.query)
+    return {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": parsed.path.lstrip("/") or "postgres",
+        "USER": unquote(parsed.username or ""),
+        "PASSWORD": unquote(parsed.password or ""),
+        "HOST": parsed.hostname or "",
+        "PORT": str(parsed.port) if parsed.port else "",
+        "OPTIONS": {"sslmode": query.get("sslmode", ["prefer"])[0]},
     }
+
+
+DATABASES = {
+    "default": _database_config(),
 }
 
 AUTH_PASSWORD_VALIDATORS = [
