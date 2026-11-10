@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="52%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#0ea5e9"/>
+    </linearGradient>
+    <marker id="a" markerWidth="8" markerHeight="8" refX="7.2" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0.8 0.8 L7.2 4 L0.8 7.2 Z" fill="#fff"/>
+    </marker>
+  </defs>
+  <circle cx="24" cy="24" r="24" fill="url(#g)"/>
+  <circle cx="17" cy="14" r="9" fill="#fff" opacity="0.14"/>
+  <path d="M14.5 29.5 A11 11 0 0 1 33.5 18.5" stroke="#fff" stroke-width="3.4" stroke-linecap="round" marker-end="url(#a)"/>
+  <path d="M33.5 18.5 A11 11 0 0 1 14.5 29.5" stroke="#fff" stroke-width="3.4" stroke-linecap="round" marker-end="url(#a)"/>
+  <circle cx="24" cy="24" r="2" fill="#fff" opacity="0.95"/>
+</svg>

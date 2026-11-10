@@ -530,6 +530,37 @@ What changed (`frontend/src/App.tsx` header block only):
   JSX is untouched, and the parent's post-deploy live check covers the
   admin console visually.
 
+## Logo redesign (2026-11-10, user feedback)
+
+User liked the dark premium navbar but ordered a prettier logo ("logo koi
+pyara sa lgao"); everything else stays as-is for now. **Only the logo
+changed** — `LogoMark` in `frontend/src/components/ui.tsx`, the
+`.logo-mark` CSS in `frontend/src/styles.css`, plus a matching favicon
+(`frontend/public/favicon.svg`, linked from `frontend/index.html`).
+`App.tsx` (navbar, admin console, dashboard) is byte-identical.
+
+- **New mark:** a full-round disc (old mark was a rounded square) with an
+  indigo → violet → sky gradient, a white circular double-arrow loop inside
+  (top arc flows right, bottom arc flows left, arrowheads at both ends —
+  the "swap" in a circle) and a small white dot at the centre. The opaque
+  disc reads cleanly on both the dark navbar and the light auth screen.
+  Wordmark ("Skill Swap Platform") unchanged.
+- **Verification (logo round, coordinator, 2026-11-10):** `npm run build`
+  passes (strict TS + Vite), built with
+  `VITE_API_URL=https://skillswap-v2-backend.onrender.com/api`.
+  Playwright (`/tmp/verify_logo3.py`) against the production build served
+  locally (same harness: loopback `socat` relay + `--disable-web-security`,
+  test-only — the first two runs failed on a dead `127.0.0.1:3129` relay left
+  over from cleanup, fixed by restarting it; the live backend login API
+  itself was fine throughout). Screenshots inspected by the coordinator:
+  desktop dark navbar + 390px navbar show the new circular loop mark with
+  glow, login screen shows it on the hero panel; search "Python" filters
+  to Leo only; dashboard loads Priya 79% / Leo 59%; 0px horizontal
+  overflow at 390px; no page errors; `/favicon.svg` serves 200.
+  Screenshots: `/tmp/skillswap-v2-shots-logo/`
+  (`01-login-desktop`, `10-student-desktop-loaded-header`,
+  `12-student-mobile-loaded-header`).
+
 ## Deliberately left out
 
 - Nothing the SRS/SDD requires is missing. Out of scope for this build (not
