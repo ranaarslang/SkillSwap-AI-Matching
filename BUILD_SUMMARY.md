@@ -473,6 +473,63 @@ What changed (`frontend/src/App.tsx` header block + `IconSearch` in
   for). The `git diff` proves the admin header JSX is untouched, and the
   parent's post-deploy live check covers the admin console visually.
 
+## Dark premium navbar (2026-11-10, user feedback)
+
+The user rejected the previous (light) header redesign as a minor change and
+chose "Dark premium navbar banao". **Only the student navbar changed; the
+admin header/console is byte-identical** (`git diff` confirms: admin branch
+JSX, admin header classes, and the admin STAFF badge are untouched; the new
+dark styling renders only when `!isAdminView`).
+
+What changed (`frontend/src/App.tsx` header block only):
+
+- **Full dark gradient bar** — the plain white bar is gone. Navbar is now a
+  rich `indigo-950 → #1b1740 → violet-950` gradient with a soft violet glow
+  wash (radial, top-left) + a sky glow (top-right) and a deep indigo drop
+  shadow, so it reads as a bold brand bar at first glance.
+- **Glowing logo** — `LogoMark` keeps its indigo→violet gradient but now
+  carries a violet glow (`shadow-[0_0_22px_rgba(167,139,250,0.55)]`, stronger
+  on hover) and a violet ring.
+- **White brand text** — "Skill Swap" in white, "Platform" in a
+  violet-300 → sky-300 gradient, "WITH AI MATCHING" eyebrow in violet-300.
+  No dark text on the bar anywhere, so readability is high.
+- **Bright hairline** — the bottom edge now carries a brighter
+  violet-400 → fuchsia-400 → sky-400 line (was indigo/violet/sky on white).
+- **Dark search pill** — translucent white/10 fill, white/15 border, white
+  text, indigo-200/60 placeholder, violet focus ring. Same value / `onChange`
+  / handler — filtering behaviour unchanged.
+- **Dark user chip** — translucent white/10 pill, white name, amber-300
+  `★ {trust_score}` pill and violet-300 `✓` verified mark, all readable on
+  the dark bar.
+- **Admin stays clearly distinct** — admin is black slate-950 + emerald/teal
+  + shield + "Admin Console" label; student is indigo/violet gradient +
+  swap-arrows logo + no emerald anywhere. The rest of the student app
+  (dashboard body, cards, sidebar) stays LIGHT — only the navbar is dark,
+  which is what makes it striking.
+
+### Verification (dark navbar round, coordinator, 2026-11-10)
+
+- `npm run build` passes (strict TS + Vite), built with
+  `VITE_API_URL=https://skillswap-v2-backend.onrender.com/api`.
+- Visual verification: Playwright (`/tmp/verify_darknav.py`) against the
+  production build served locally with `VITE_API_URL` pointing at the live
+  Render backend (same test harness as the header round: loopback `socat`
+  relay + `--disable-web-security`, test-only). **Student navbar PASSED**:
+  desktop screenshot shows the dark gradient bar, glowing logo, white brand
+  text, dark search pill and trust chip (`★ 100` + `✓` for maya);
+  computed style confirms the gradient
+  (`linear-gradient(to right, indigo-950, #1b1740, violet-950)`) and white
+  brand text; 390px screenshot shows the wrapped two-row dark header with
+  0px horizontal overflow; search "Python" filters to Leo only and clearing
+  restores both matches; dashboard loads with Priya 79% / Leo 59%; no page
+  errors. Screenshots: `/tmp/skillswap-v2-shots-darknav/`
+  (`10-student-desktop-loaded`, `12-student-mobile-loaded`).
+- **Admin console header — code-verified unchanged, live screenshot not
+  taken in this round** (same reason as the header round: admin password is
+  the user's own; never asked for). The `git diff` proves the admin header
+  JSX is untouched, and the parent's post-deploy live check covers the
+  admin console visually.
+
 ## Deliberately left out
 
 - Nothing the SRS/SDD requires is missing. Out of scope for this build (not

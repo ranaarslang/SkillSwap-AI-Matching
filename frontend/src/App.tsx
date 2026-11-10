@@ -243,15 +243,19 @@ export default function App() {
         className={`sticky top-0 z-40 border-b backdrop-blur ${
           isAdminView
             ? 'border-slate-800 bg-slate-950/95 shadow-[0_1px_12px_rgba(0,0,0,0.45)]'
-            : 'border-transparent bg-white/95 shadow-[0_1px_12px_rgba(15,23,42,0.06)]'
+            : 'border-violet-400/20 bg-gradient-to-r from-indigo-950 via-[#1b1740] to-violet-950 shadow-[0_8px_30px_-6px_rgba(30,27,75,0.7)]'
         }`}
       >
-        {/* Student-only brand gradient hairline along the header's bottom
-            edge — the premium signature. Admin keeps its plain dark border. */}
+        {/* Student-only dark-premium dressing: a soft violet glow wash plus a
+            bright gradient hairline along the bottom edge. Admin keeps its
+            plain dark border. */}
         {!isAdminView && (
-          <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-gradient-to-r from-indigo-500 via-violet-500 to-sky-400" />
+          <>
+            <span aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(40rem_10rem_at_12%_-40%,rgba(139,92,246,0.35),transparent_60%),radial-gradient(30rem_8rem_at_88%_-30%,rgba(56,189,248,0.22),transparent_60%)]" />
+            <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-gradient-to-r from-violet-400 via-fuchsia-400 to-sky-400" />
+          </>
         )}
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3">
+        <div className="relative mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3">
           {isAdminView ? (
             <button onClick={() => setTab('dashboard')} className="flex shrink-0 items-center gap-2.5 text-left" aria-label="Admin Console — back to student app">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/30">
@@ -263,24 +267,24 @@ export default function App() {
               </span>
             </button>
           ) : (
-            <button onClick={() => setTab('dashboard')} className="flex shrink-0 items-center gap-3 text-left transition hover:opacity-90" aria-label="Skill Swap Platform with AI Matching — go to dashboard">
-              <LogoMark className="h-11 w-11 ring-1 ring-white/60" />
+            <button onClick={() => setTab('dashboard')} className="group flex shrink-0 items-center gap-3 text-left transition hover:opacity-95" aria-label="Skill Swap Platform with AI Matching — go to dashboard">
+              <LogoMark className="h-11 w-11 ring-1 ring-violet-300/50 shadow-[0_0_22px_rgba(167,139,250,0.55)] transition group-hover:shadow-[0_0_28px_rgba(167,139,250,0.75)]" />
               <span className="leading-tight">
-                <span className="block text-[17px] font-extrabold tracking-tight text-slate-900">Skill Swap <span className="grad-text">Platform</span></span>
-                <span className="block text-[11px] font-bold uppercase tracking-[0.18em] text-indigo-600">with AI Matching</span>
+                <span className="block text-[17px] font-extrabold tracking-tight text-white">Skill Swap <span className="bg-gradient-to-r from-violet-300 to-sky-300 bg-clip-text text-transparent">Platform</span></span>
+                <span className="block text-[11px] font-bold uppercase tracking-[0.18em] text-violet-300">with AI Matching</span>
               </span>
             </button>
           )}
           {!isAdminView && (
             <div className="relative min-w-[180px] flex-1 sm:mx-4 sm:max-w-md">
-              <IconSearch className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <IconSearch className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-indigo-200/70" />
               <input
                 type="search"
                 value={searchQuery}
                 onChange={(e) => handleSearchChange(e.target.value)}
                 placeholder="Search people, skills…"
                 aria-label="Search matches"
-                className="search w-full rounded-full border border-slate-200/80 bg-slate-100/90 py-2 pl-10 pr-4 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:outline-none focus:ring-4 focus:ring-indigo-500/15"
+                className="search w-full rounded-full border border-white/15 bg-white/10 py-2 pl-10 pr-4 text-sm text-white shadow-sm placeholder:text-indigo-200/60 focus:border-violet-300/60 focus:bg-white/15 focus:outline-none focus:ring-4 focus:ring-violet-400/25"
               />
             </div>
           )}
@@ -294,16 +298,16 @@ export default function App() {
                 </span>
               </>
             ) : (
-              <div className="flex items-center gap-2 rounded-full border border-slate-200/90 bg-white py-1 pl-1 pr-2.5 shadow-sm">
+              <div className="flex items-center gap-2 rounded-full border border-white/15 bg-white/10 py-1 pl-1 pr-2.5 shadow-sm backdrop-blur">
                 <Avatar user={user} color={profile?.avatar_color} size="sm" />
-                <span className="hidden text-sm font-semibold text-slate-700 sm:block">{displayName(user)}</span>
+                <span className="hidden text-sm font-semibold text-white sm:block">{displayName(user)}</span>
                 {profile && (
-                  <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700 ring-1 ring-inset ring-amber-200" title={`Trust score ${profile.trust_score} out of 100`}>
-                    <span className="text-amber-500">★</span> {profile.trust_score}
+                  <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-400/15 px-2 py-0.5 text-[11px] font-bold text-amber-300 ring-1 ring-inset ring-amber-400/30" title={`Trust score ${profile.trust_score} out of 100`}>
+                    <span className="text-amber-300">★</span> {profile.trust_score}
                   </span>
                 )}
                 {profile?.verified_badge && (
-                  <span className="hidden text-[11px] font-bold text-indigo-600 sm:inline" title="Verified account">✓</span>
+                  <span className="hidden text-[11px] font-bold text-violet-300 sm:inline" title="Verified account">✓</span>
                 )}
               </div>
             )}
