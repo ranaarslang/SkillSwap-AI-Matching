@@ -1034,6 +1034,111 @@ is still NOT verified (known gap — needs a live two-device test).
   finished — the sessions list was still empty, not a product bug. The
   script now waits for a non-zero session count first.)
 
+## Round 3e — fix round (2026-11-11, three user reports 14:41–14:47 PKT)
+
+### Back button missing on BOTH sides (user: "back ka button dono trf nahi ha")
+Audited every drill-down/sub-view at 1280×800 AND 390px, student +
+admin. Already present and verified working: ProfileModal
+("← Back to dashboard"), ChatHub conversation ("← Back to
+conversations", fixed in 3d), AdminUserDetail ("← Back to users"),
+desktop sidebar "← Back to student app", AuthScreen admin-login
+("← Back to student login"), admin top-bar brand → dashboard.
+**Gaps found and fixed:** (1) `CallView.tsx` had only "End call" — added
+a "← Back" button in the call header (incoming → decline, else end call,
+then back to the chat); (2) mobile admin had NO explicit Back (sidebar
+hidden below `md`) — added a mobile-only "← Back to student app"
+button at the top of the admin main area (`App.tsx`, `md:hidden`,
+`aria-label="Back to student app"`). Admin tabs (users/sessions/
+reviews/approvals) are flat lists with inline actions — no drill-in
+except AdminUserDetail, so no Back needed there.
+
+### Rating dead-end (user: "rating deny wala button b bas 2 profile par ha… already likh ata ha")
+Root cause, two parts. (a) Maya's only completed-session partner was
+Sana, already reviewed 5 stars, so there was NO rateable target anywhere
+on the live site. Fix: `seed_demo.py` now adds a maya–Leo COMPLETED
+session (date TODAY−7, "Python Automation for Video Editing", NO review
+— deliberate). `update_or_create` keyed on (partners, date), so a
+same-day re-seed finds it again; the admin password is untouched and no
+live-user data is wiped. (b) The Rate button could flash for a reviewed
+partner before the reviewed-list fetch resolved (`reviewedSessionIds`
+started as `[]` in ChatHub, FeedbackHub and ProfileModal). Fix: all
+three now treat the list as unknown until the fetch completes
+(`null` / `reviewsLoaded`), hiding every Rate button and showing
+"Loading your sessions…" in the hub until then; the Feedback Hub
+pre-select is not consumed until the list is known. The ProfileModal
+now also shows "★ Rate {name}" (new props `sessions`, `currentUserId`,
+`onRateSession`; student side only, gated on `onRateSession` being
+passed) when a completed unreviewed session with that user exists, and
+the hub prefers an unreviewed session per partner when building the
+list. Verified end-to-end as maya: "★ Rate Leo" on the session row and
+in Leo's profile → submit 4 stars → Thank-you + Leo trust 100 → 80,
+average 4.0 (1 review) via API → button gone everywhere, hub
+"All caught up"; duplicate review via API still 400.
+
+### Video call: screen share + working mute/camera-off (user report 14:44 PKT)
+`call.ts`: `CallState.screenSharing` + `screenStream`, `toggleScreenShare()`
+(`getDisplayMedia` video-only; `replaceTrack` on the video sender so the
+remote side sees the screen; the screen track's `onended` and the stop
+button both revert to the camera; mic audio is untouched so mute works
+while sharing). `CallView.tsx`: "🖥 Share screen" / "⏹ Stop sharing"
+button, "🖥 Sharing your screen" indicator, local preview shows the
+screen stream while sharing, camera button disabled while sharing with
+an explanatory title, "Camera off" overlay suppressed while sharing.
+Mute/camera toggles already flipped `track.enabled` on the local stream
+tracks (3b) — verified here: mute disables the audio track (label flips
+to "🔇 Unmute"), camera-off disables the video track (label flips to
+"📹 Camera on", "Camera off" overlay in the preview). Bonus finding:
+calling an offline peer ends the call in ~2s with "{name} is offline
+right now." (`call.offline` from the backend) — correct behaviour, not
+a bug; the toggle tests use a second browser as Leo (online, not
+answering) so the call stays ringing. **Still NOT verified: a real
+two-user call** — remote screen-share rendering and remote mute/
+camera-off reflection need a live two-device test (sandbox blocks UDP,
+so the peer connection cannot reach "connected" here).
+
+### Country list in the user panel (user report 14:47 PKT: "just 3 country")
+Audit of EVERY country selector: signup (`#su-country`, AuthScreen) and
+profile edit (`#pf-country`, ProfilePanel) both already map the shared
+`COUNTRIES` list (`frontend/src/countries.ts`, 196 entries) — verified
+by opening each dropdown and counting 197 options incl. the placeholder,
+with Afghanistan, Pakistan, United Kingdom, United States and Zimbabwe
+all present; saving Pakistan in the profile edit persists via API and
+shows as "Lahore, Pakistan" in the admin users table. No hardcoded
+short list exists anywhere in the code or in git history (the list was
+added whole in 3c). The "3 countries" the user saw is most plausibly
+the three demo locations on the live site (Lahore / Karachi / Islamabad
+— city-only demo data, deliberately left as-is per the task) or a
+stale cached bundle on their phone. **Correction to the 3d deploy
+report:** the live site WAS running round 3d all along. The earlier
+"deploy stuck" alarm was a hash-comparison mistake — my local build
+used `VITE_API_URL=http://localhost:8000/api` while Render builds with
+the onrender URL, so the hashes differed. Rebuilding 161597d with the
+Render URL produces exactly the live bundle `index-_VDh77CI.js`. The
+Render static deploy works and is fast; verify it the same way (build
+with the Render URL, compare hashes) instead of comparing against a
+localhost-URL build.
+
+### Verification (round 3e, 2026-11-11)
+- `npx tsc --noEmit` clean; `manage.py check` clean.
+- Playwright (`~/workspace/.scratch-skillswap-r3/verify-r3e.py`, vite
+  preview :4173 + local Daphne :8000) — **52/52 passed** as maya
+  (demo1234) + a second browser as Leo (online, not answering) + local
+  seeded admin, desktop 1280×800 + 390px: both country dropdowns 197
+  options with the 5 spot countries; Pakistan save persists; all Back
+  buttons on both sides at both widths (ProfileModal, ChatHub, CallView,
+  AdminUserDetail, admin mobile + desktop, admin-login); Rate Leo
+  present (session row + ProfileModal), submit 4★ → trust 80, gone
+  everywhere after, duplicate 400; mute/camera track flips + labels +
+  overlay; screen share start/stop + badge + camera-track restore;
+  incoming call shows on Leo's side, Leo's side clears on end; zero
+  page errors on every context. Screenshots:
+  `~/workspace/.scratch-skillswap-r3/shots-r3e/`. (Two test-only races
+  fixed along the way: the profile-save wait used `#pf-name`, which is
+  'Maya Chen' from the login user object before the profile loads — the
+  script now waits for the "Remove Python" skill chip; the mobile-admin
+  wait used "Admin Panel" text, which resolves to the hidden desktop
+  sidebar button on mobile — it now waits for the Users tab content.)
+
 ## Quality audit (round 3c, 2026-11-11) — traceability + clean-clone run
 
 - `TRACEABILITY.md` (committed with this round): every SRS REQ-01–05 +
@@ -1079,9 +1184,11 @@ is still NOT verified (known gap — needs a live two-device test).
   section now covers the admin panel, video call, file/code sharing,
   Find people, rating visibility, Message Approvals, country location
   and Back buttons, and documents the seeded admin login.
-- **Open gaps (see TRACEABILITY.md §7):** video-call media not verified
-  end-to-end (sandbox blocks UDP — needs a live two-user test on real
-  devices); latency targets unmeasured (500 ms matching / 100 ms
+- **Open gaps (see TRACEABILITY.md §7):** a real two-user video call is
+  not verified end-to-end (sandbox blocks UDP — remote screen-share
+  rendering and remote mute/camera-off reflection need a live two-device
+  test; local track toggles + screen-share start/stop + replaceTrack
+  wiring ARE verified in round 3e, single-browser with fake devices); latency targets unmeasured (500 ms matching / 100 ms
   message); browser coverage is Chromium only; W3C markup not
   validator-checked; Render free-tier limits (backend sleeps after
   idle, uploaded files live on ephemeral disk); match scores jitter

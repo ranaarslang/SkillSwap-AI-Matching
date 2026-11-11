@@ -25,6 +25,10 @@ export interface CallState {
   remoteStream: MediaStream | null
   muted: boolean
   cameraOff: boolean
+  /** True while the local screen (not the camera) is being sent. */
+  screenSharing: boolean
+  /** The getDisplayMedia stream, shown in the local preview while sharing. */
+  screenStream: MediaStream | null
   /** Human-readable end reason, shown while status === 'ended'. */
   notice: string | null
 }
@@ -164,6 +168,8 @@ export class CallManager {
       remoteStream: null,
       muted: false,
       cameraOff: false,
+      screenSharing: false,
+      screenStream: null,
       notice: null,
     }
     this.pendingOffer = null
@@ -262,6 +268,68 @@ export class CallManager {
     this.emit()
   }
 
+  // ---------------------------------------------------------------- screen share
+  /** Share the screen instead of the camera (replaceTrack on the video
+   * sender, so the remote side sees the screen on the same track).
+   * Stopping — button toggle or the browser's native "Stop sharing" —
+   * swaps the camera track back in. The mic audio track is untouched,
+   * so mute keeps working while sharing. */
+  async toggleScreenShare() {
+    if (!this.call || !this.pc || this.call.status === 'ended') return
+    if (this.call.screenSharing) {
+      this.stopScreenShare()
+      return
+    }
+    const callId = this.call.callId
+    let screen: MediaStream
+    try {
+      screen = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+    } catch {
+      return // user cancelled the picker, or the browser denied it
+    }
+    if (!this.call || !this.pc || this.call.callId !== callId) {
+      screen.getTracks().forEach((t) => t.stop())
+      return
+    }
+    const screenTrack = screen.getVideoTracks()[0]
+    const sender = this.pc.getSenders().find((s) => s.track?.kind === 'video')
+    if (!screenTrack || !sender) {
+      screen.getTracks().forEach((t) => t.stop())
+      return
+    }
+    try {
+      await sender.replaceTrack(screenTrack)
+    } catch {
+      screen.getTracks().forEach((t) => t.stop())
+      return
+    }
+    // The browser's native "Stop sharing" ends the track — revert then.
+    screenTrack.onended = () => {
+      this.stopScreenShare()
+    }
+    this.call = { ...this.call, screenSharing: true, screenStream: screen }
+    this.emit()
+  }
+
+  private stopScreenShare() {
+    const call = this.call
+    if (!call || !call.screenSharing) return
+    call.screenStream?.getTracks().forEach((t) => {
+      try {
+        t.stop()
+      } catch {
+        /* already stopped */
+      }
+    })
+    const cameraTrack = call.localStream?.getVideoTracks()[0]
+    const sender = this.pc?.getSenders().find((s) => s.track?.kind === 'video')
+    if (sender && cameraTrack) {
+      sender.replaceTrack(cameraTrack).catch(() => {})
+    }
+    this.call = { ...call, screenSharing: false, screenStream: null }
+    this.emit()
+  }
+
   private cleanup(notice: string) {
     this.clearTimers()
     const callId = this.call?.callId
@@ -276,10 +344,13 @@ export class CallManager {
     if (this.call?.localStream) {
       this.call.localStream.getTracks().forEach((t) => t.stop())
     }
+    if (this.call?.screenStream) {
+      this.call.screenStream.getTracks().forEach((t) => t.stop())
+    }
     this.pendingOffer = null
     this.pendingCandidates = []
     if (this.call) {
-      this.call = { ...this.call, status: 'ended', notice, localStream: null, remoteStream: null }
+      this.call = { ...this.call, status: 'ended', notice, localStream: null, remoteStream: null, screenSharing: false, screenStream: null }
       this.emit()
       this.endTimer = setTimeout(() => {
         const current = this.call
@@ -315,6 +386,8 @@ export class CallManager {
         remoteStream: null,
         muted: false,
         cameraOff: false,
+        screenSharing: false,
+        screenStream: null,
         notice: null,
       }
       this.pendingOffer = null

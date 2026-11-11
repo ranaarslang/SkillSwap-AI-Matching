@@ -229,6 +229,19 @@ class Command(BaseCommand):
                 "block": "1 Hour Mutual Swap",
                 "status": SwapSession.Status.COMPLETED,
             },
+            {
+                # Deliberately NO review: maya's rateable demo target, so the
+                # rating flow (Rate button -> stars -> trust update) is
+                # demonstrable. The Sana session above is already reviewed.
+                # Same date-keyed update_or_create as the other sessions:
+                # a re-seed on a later day adds a fresh one, a same-day
+                # re-seed finds this one again. Never add a review here.
+                "p1": maya, "p2": leo,
+                "title": "Python Automation for Video Editing",
+                "date": TODAY - timedelta(days=7),
+                "block": "1 Hour Mutual Swap",
+                "status": SwapSession.Status.COMPLETED,
+            },
         ]
         created_sessions = {}
         for spec in sessions:

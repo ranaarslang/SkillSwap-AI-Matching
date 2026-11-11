@@ -450,6 +450,18 @@ export default function App() {
 
         {/* Main content */}
         <main className={`min-w-0 flex-1 ${isAdminView ? 'admin-console' : ''}`}>
+          {/* Mobile admin: the desktop sidebar's "Back to student app"
+              button is hidden below the md breakpoint, so without this
+              there is no visible way back from the console on a phone. */}
+          {isAdminView && (
+            <button
+              onClick={() => setTab('dashboard')}
+              className="mb-4 inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-semibold text-slate-200 md:hidden"
+              aria-label="Back to student app"
+            >
+              ← Back to student app
+            </button>
+          )}
           {toast && (
             <div role="status" className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-700">
               {toast}
@@ -536,6 +548,13 @@ export default function App() {
             setViewingProfile(null)
             void callManagerRef.current?.startCall(p.user)
           }}
+          sessions={sessions}
+          currentUserId={user.id}
+          onRateSession={(s) => {
+            setViewingProfile(null)
+            setFeedbackPreselect(s.id)
+            setTab('feedback')
+          }}
         />
       )}
 
@@ -548,6 +567,7 @@ export default function App() {
           onEnd={() => callManagerRef.current?.endCall()}
           onToggleMute={() => callManagerRef.current?.toggleMute()}
           onToggleCamera={() => callManagerRef.current?.toggleCamera()}
+          onToggleScreenShare={() => void callManagerRef.current?.toggleScreenShare()}
         />
       )}
 

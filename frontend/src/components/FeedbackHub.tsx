@@ -22,31 +22,16 @@ function otherPerson(s: SessionItem, me: number): User {
 }
 
 export default function FeedbackHub({ sessions, currentUserId, peerProfiles, loading, error, preselectSessionId, onPreselectConsumed, onReviewed }: Props) {
-  // Partners limited to completed-session partners only
-  const completedPartners = useMemo(() => {
-    const map = new Map<number, { partner: User; session: SessionItem }>()
-    sessions
-      .filter((s) => s.session_status === 'COMPLETED')
-      .forEach((s) => {
-        const partner = otherPerson(s, currentUserId)
-        if (!map.has(partner.id)) map.set(partner.id, { partner, session: s })
-      })
-    return [...map.values()]
-  }, [sessions, currentUserId])
-
-  const [selectedId, setSelectedId] = useState('')
-  const [rating, setRating] = useState(0)
-  const [comment, setComment] = useState('')
-  const [submitError, setSubmitError] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [result, setResult] = useState<{ name: string; trust: number } | null>(null)
   // Sessions already reviewed — one review per session per author
   // (server-enforced); hide them so a duplicate can't be attempted.
   // Seeded from the server on mount (round-3c audit fix for REQ-05.1):
   // the old visit-only state forgot reviews after a reload, so the hub
   // re-listed already-reviewed partners and the submit then failed with
-  // a 400. The in-visit additions below still apply for instant feedback.
+  // a 400. reviewsLoaded is false until that fetch resolves: while it is
+  // false no partner is shown as rateable, so a reviewed partner never
+  // flashes as rateable on open (the user's "already" dead-end).
   const [reviewedSessionIds, setReviewedSessionIds] = useState<number[]>([])
+  const [reviewsLoaded, setReviewsLoaded] = useState(false)
   useEffect(() => {
     let cancelled = false
     api.getMyReviews()
@@ -60,26 +45,64 @@ export default function FeedbackHub({ sessions, currentUserId, peerProfiles, loa
               .filter((s): s is number => typeof s === 'number'),
           ]),
         ])
+        setReviewsLoaded(true)
       })
-      .catch(() => undefined)
+      .catch(() => {
+        if (!cancelled) setReviewsLoaded(true)
+      })
     return () => {
       cancelled = true
     }
   }, [])
+
+  // Partners limited to completed-session partners only. When a partner
+  // has TWO completed sessions (one reviewed, one not), prefer the
+  // unreviewed one — otherwise the partner wrongly looks un-rateable
+  // even though a genuine rating is still possible.
+  const completedPartners = useMemo(() => {
+    if (!reviewsLoaded) return []
+    const map = new Map<number, { partner: User; session: SessionItem }>()
+    sessions
+      .filter((s) => s.session_status === 'COMPLETED')
+      .forEach((s) => {
+        const partner = otherPerson(s, currentUserId)
+        const existing = map.get(partner.id)
+        if (
+          !existing ||
+          (reviewedSessionIds.includes(existing.session.id) &&
+            !reviewedSessionIds.includes(s.id))
+        ) {
+          map.set(partner.id, { partner, session: s })
+        }
+      })
+    return [...map.values()]
+  }, [sessions, currentUserId, reviewedSessionIds, reviewsLoaded])
+
   const rateablePartners = completedPartners.filter((p) => !reviewedSessionIds.includes(p.session.id))
 
+  const [selectedId, setSelectedId] = useState('')
+  const [rating, setRating] = useState(0)
+  const [comment, setComment] = useState('')
+  const [submitError, setSubmitError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState<{ name: string; trust: number } | null>(null)
+
   // A "Rate" button on a completed session lands here with that session
-  // pre-selected, so the user goes straight to the stars.
+  // pre-selected, so the user goes straight to the stars. Only a
+  // genuinely rateable session is pre-selected — a reviewed one lands
+  // on "All caught up" instead of a dead-end form. The pre-select is
+  // not consumed until the reviews have loaded, or a rateable session
+  // would be missed while the list is still empty.
   useEffect(() => {
-    if (!preselectSessionId) return
-    const entry = completedPartners.find((p) => p.session.id === preselectSessionId)
+    if (!preselectSessionId || !reviewsLoaded) return
+    const entry = rateablePartners.find((p) => p.session.id === preselectSessionId)
     if (entry) {
       setSelectedId(String(entry.partner.id))
       setResult(null)
       setSubmitError('')
     }
     onPreselectConsumed?.()
-  }, [preselectSessionId, completedPartners, onPreselectConsumed])
+  }, [preselectSessionId, rateablePartners, onPreselectConsumed, reviewsLoaded])
 
   const selected = rateablePartners.find((p) => String(p.partner.id) === selectedId)
 
@@ -131,7 +154,7 @@ export default function FeedbackHub({ sessions, currentUserId, peerProfiles, loa
         </div>
       )}
 
-      {loading ? (
+      {loading || !reviewsLoaded ? (
         <p className="text-slate-500 text-sm">Loading your sessions…</p>
       ) : rateablePartners.length === 0 ? (
         <div className="card p-10 text-center">

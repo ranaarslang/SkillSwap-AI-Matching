@@ -12,6 +12,7 @@ interface Props {
   onEnd: () => void
   onToggleMute: () => void
   onToggleCamera: () => void
+  onToggleScreenShare: () => void
 }
 
 function statusText(call: CallState): string {
@@ -38,9 +39,12 @@ export default function CallView(props: Props) {
   // muted playback and offer an unmute button.
   const [remoteMuted, setRemoteMuted] = useState(false)
 
+  // While sharing, the local preview shows the screen, not the camera.
+  const previewStream = call.screenSharing && call.screenStream ? call.screenStream : call.localStream
+
   useEffect(() => {
-    if (localRef.current) localRef.current.srcObject = call.localStream
-  }, [call.localStream])
+    if (localRef.current) localRef.current.srcObject = previewStream
+  }, [previewStream])
   useEffect(() => {
     const v = remoteRef.current
     if (v && call.remoteStream) {
@@ -64,9 +68,20 @@ export default function CallView(props: Props) {
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/95 flex flex-col" role="dialog" aria-label="Video call">
       <header className="flex items-center justify-between px-4 sm:px-6 py-4 text-white">
-        <div>
-          <p className="font-bold text-lg leading-tight">{displayName(call.peer)}</p>
-          <p className="text-sm text-slate-300">{statusText(call)}</p>
+        <div className="flex items-center gap-3 min-w-0">
+          {/* Back leaves the call (declines an incoming one) and returns
+              to the chat — the overlay has no other way out. */}
+          <button
+            onClick={() => (call.status === 'incoming' ? props.onDecline() : props.onEnd())}
+            className="shrink-0 rounded-lg px-2 py-1 text-sm font-semibold text-indigo-200 hover:bg-white/10 hover:text-white"
+            aria-label="Back to chat"
+          >
+            ← Back
+          </button>
+          <div className="min-w-0">
+            <p className="font-bold text-lg leading-tight">{displayName(call.peer)}</p>
+            <p className="text-sm text-slate-300">{statusText(call)}</p>
+          </div>
         </div>
         <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-indigo-600 text-white">In-app video call</span>
       </header>
@@ -84,7 +99,7 @@ export default function CallView(props: Props) {
           </div>
         )}
 
-        {call.localStream && (
+        {previewStream && (
           <video
             ref={localRef}
             autoPlay
@@ -92,6 +107,11 @@ export default function CallView(props: Props) {
             muted
             className="absolute bottom-3 right-3 w-28 sm:w-44 aspect-video rounded-xl object-cover ring-2 ring-white/70 bg-slate-800"
           />
+        )}
+        {call.screenSharing && (
+          <span className="absolute bottom-3 right-3 w-28 sm:w-44 aspect-video rounded-xl bg-slate-800/60 flex items-end justify-center pb-1.5 text-[11px] font-semibold text-emerald-300 pointer-events-none">
+            🖥 Sharing your screen
+          </span>
         )}
         {remoteMuted && call.remoteStream && (
           <button
@@ -101,7 +121,7 @@ export default function CallView(props: Props) {
             🔊 Tap to unmute
           </button>
         )}
-        {call.cameraOff && call.localStream && (
+        {call.cameraOff && call.localStream && !call.screenSharing && (
           <span className="absolute bottom-3 right-3 w-28 sm:w-44 aspect-video rounded-xl bg-slate-800/80 flex items-center justify-center text-xs font-semibold text-slate-200">
             Camera off
           </span>
@@ -131,10 +151,18 @@ export default function CallView(props: Props) {
             </button>
             <button
               onClick={props.onToggleCamera}
-              disabled={!call.localStream}
+              disabled={!call.localStream || call.screenSharing}
+              title={call.screenSharing ? 'Camera controls are off while sharing your screen' : undefined}
               className="rounded-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white font-semibold px-5 py-3"
             >
               {call.cameraOff ? '📹 Camera on' : '📷 Camera off'}
+            </button>
+            <button
+              onClick={props.onToggleScreenShare}
+              disabled={!call.localStream}
+              className="rounded-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white font-semibold px-5 py-3"
+            >
+              {call.screenSharing ? '⏹ Stop sharing' : '🖥 Share screen'}
             </button>
             <button onClick={props.onEnd} className="rounded-full bg-red-600 hover:bg-red-700 text-white font-semibold px-6 py-3">
               End call

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import type { MatchProfile, Profile, Review } from '../api'
+import { useEffect, useMemo, useState } from 'react'
+import type { MatchProfile, Profile, Review, SessionItem } from '../api'
 import { api, displayName, formatLocation } from '../api'
 import { Avatar, Chip, IconClose, IconPin, RatingStars, ScoreBadge, TrustBadge, VerifiedBadge } from './ui'
 
@@ -17,6 +17,12 @@ interface Props {
   onCall?: (profile: Profile) => void
   /** Admin profile views hide the match score — it is meaningless there. */
   hideScore?: boolean
+  /** Completed sessions with this user, for the Rate button. Only passed
+   * on the student side — the admin view never rates. */
+  sessions?: SessionItem[]
+  currentUserId?: number
+  /** Jump to the Feedback Hub with this session pre-selected. */
+  onRateSession?: (session: SessionItem) => void
 }
 
 /**
@@ -24,8 +30,43 @@ interface Props {
  * out — bio, location, availability, trust score, teach/learn skills,
  * recent reviews, and a prominent Message button.
  */
-export default function ProfileModal({ profile, isMatch, onClose, onMessage, onCall, hideScore = false }: Props) {
+export default function ProfileModal({ profile, isMatch, onClose, onMessage, onCall, hideScore = false, sessions, currentUserId, onRateSession }: Props) {
   const [reviews, setReviews] = useState<Review[] | null>(null)
+
+  // The one completed, not-yet-reviewed session with this user — the
+  // Rate button below only shows when a genuine rating is possible, so
+  // it can never dead-end on "already rated". reviewedSessionIds is null
+  // until the fetch completes: while it is null the button stays hidden,
+  // so a reviewed partner never flashes as rateable on open.
+  const [reviewedSessionIds, setReviewedSessionIds] = useState<number[] | null>(null)
+  useEffect(() => {
+    if (!onRateSession) return
+    let cancelled = false
+    api.getMyReviews()
+      .then((mine) => {
+        if (cancelled) return
+        setReviewedSessionIds(
+          mine.map((r) => r.session).filter((s): s is number => typeof s === 'number'),
+        )
+      })
+      .catch(() => {
+        if (!cancelled) setReviewedSessionIds([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [onRateSession])
+  const rateableSession = useMemo(() => {
+    if (!onRateSession || !sessions || currentUserId === undefined || reviewedSessionIds === null) return null
+    return (
+      sessions.find((s) => {
+        if (s.session_status !== 'COMPLETED') return false
+        if (reviewedSessionIds.includes(s.id)) return false
+        const other = s.partner_one.id === currentUserId ? s.partner_two : s.partner_one
+        return other.id === profile.user.id
+      }) ?? null
+    )
+  }, [onRateSession, sessions, currentUserId, reviewedSessionIds, profile.user.id])
 
   useEffect(() => {
     let cancelled = false
@@ -186,13 +227,21 @@ export default function ProfileModal({ profile, isMatch, onClose, onMessage, onC
             )}
           </section>
 
-          <div className="flex gap-3 pt-1">
+          <div className="flex flex-wrap gap-3 pt-1">
             <button
               onClick={() => onMessage(profile)}
               className="btn-primary flex-1"
             >
               Message {displayName(profile.user).split(' ')[0]}
             </button>
+            {rateableSession && onRateSession && (
+              <button
+                onClick={() => onRateSession(rateableSession)}
+                className="rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2.5"
+              >
+                ★ Rate {displayName(profile.user).split(' ')[0]}
+              </button>
+            )}
             {onCall && (
               <button
                 onClick={() => onCall(profile)}
