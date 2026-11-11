@@ -33,6 +33,10 @@ export interface CallState {
   screenSharing: boolean
   /** The getDisplayMedia stream, shown in the local preview while sharing. */
   screenStream: MediaStream | null
+  /** Screen-share failure, shown as a banner (unsupported browser, or
+   * the browser blocked the picker) — previously the button failed
+   * silently, so a user could tap it and nothing would happen. */
+  screenShareError: string | null
   /** Human-readable end reason, shown while status === 'ended'. */
   notice: string | null
   /** Round 3f: set when camera/mic could not be acquired (permission
@@ -160,6 +164,11 @@ export class CallManager {
    * negotiated (no renegotiation handler exists). */
   private mediaReady: Promise<void> | null = null
   private mediaReadyResolve: (() => void) | null = null
+  /** The remote stream, built track by track. ontrack fires once per
+   * received track, and ev.streams can be empty — accumulating tracks
+   * into one stream is the only attach that cannot silently lose the
+   * audio or the video track. Reset per peer connection. */
+  private remoteStreamObj: MediaStream | null = null
   /** ICE diagnostics for a failed call: what the browser actually
    * gathered and received, so the failure notice can say WHY instead of
    * only "Connection failed". Reset per peer connection. */
@@ -240,10 +249,18 @@ export class CallManager {
       ],
     })
     this.pc = pc
+    this.remoteStreamObj = null
     this.iceStats = { host: 0, srflx: 0, relay: 0, gatheringComplete: false, remoteCandidates: 0, remoteDescriptionSet: false }
     pc.ontrack = (ev) => {
       if (!this.call) return
-      this.call = { ...this.call, remoteStream: ev.streams[0] ?? null }
+      // Accumulate the track into one persistent stream (see the field
+      // note): the video element keeps a single srcObject and new tracks
+      // flow into it, instead of the stream identity flipping per track.
+      if (!this.remoteStreamObj) this.remoteStreamObj = new MediaStream()
+      if (!this.remoteStreamObj.getTracks().includes(ev.track)) {
+        this.remoteStreamObj.addTrack(ev.track)
+      }
+      this.call = { ...this.call, remoteStream: this.remoteStreamObj }
       this.emit()
     }
     pc.onicecandidate = (ev) => {
@@ -350,6 +367,7 @@ export class CallManager {
       cameraOff: false,
       screenSharing: false,
       screenStream: null,
+      screenShareError: null,
       notice: null,
       mediaError: null,
     }
@@ -481,10 +499,38 @@ export class CallManager {
       return
     }
     const callId = this.call.callId
+    // Most mobile browsers have no getDisplayMedia at all — say so
+    // plainly instead of failing silently on the tap.
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getDisplayMedia) {
+      this.call = {
+        ...this.call,
+        screenShareError:
+          "Screen sharing isn't available on this device or browser — most phones don't support it. Try from a laptop or desktop browser.",
+      }
+      this.emit()
+      return
+    }
     let screen: MediaStream
     try {
       screen = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
-    } catch {
+    } catch (err) {
+      // The user cancelling the picker is normal — stay silent. A block
+      // or a missing source is not: say what happened.
+      const name = (err as { name?: string } | null)?.name
+      if (name === 'NotAllowedError') {
+        this.call = {
+          ...this.call,
+          screenShareError:
+            'Screen sharing was blocked — allow it in the browser prompt to share your screen.',
+        }
+        this.emit()
+      } else if (name === 'NotFoundError') {
+        this.call = {
+          ...this.call,
+          screenShareError: 'No screen source was found to share.',
+        }
+        this.emit()
+      }
       return // user cancelled the picker, or the browser denied it
     }
     if (!this.call || !this.pc || this.call.callId !== callId) {
@@ -515,7 +561,7 @@ export class CallManager {
     screenTrack.onended = () => {
       this.stopScreenShare()
     }
-    this.call = { ...this.call, screenSharing: true, screenStream: screen }
+    this.call = { ...this.call, screenSharing: true, screenStream: screen, screenShareError: null }
     this.emit()
   }
 
@@ -549,7 +595,7 @@ export class CallManager {
       }
     }
     this.screenSender = null
-    this.call = { ...call, screenSharing: false, screenStream: null }
+    this.call = { ...call, screenSharing: false, screenStream: null, screenShareError: null }
     this.emit()
   }
 
@@ -572,6 +618,7 @@ export class CallManager {
       this.pc = null
     }
     this.screenSender = null
+    this.remoteStreamObj = null
     if (this.call?.localStream) {
       this.call.localStream.getTracks().forEach((t) => t.stop())
     }
@@ -581,7 +628,7 @@ export class CallManager {
     this.pendingOffer = null
     this.pendingCandidates = []
     if (this.call) {
-      this.call = { ...this.call, status: 'ended', notice, localStream: null, remoteStream: null, screenSharing: false, screenStream: null, mediaError: null }
+      this.call = { ...this.call, status: 'ended', notice, localStream: null, remoteStream: null, screenSharing: false, screenStream: null, screenShareError: null, mediaError: null }
       this.emit()
       this.endTimer = setTimeout(() => {
         const current = this.call
@@ -619,6 +666,7 @@ export class CallManager {
         cameraOff: false,
         screenSharing: false,
         screenStream: null,
+        screenShareError: null,
         notice: null,
         mediaError: null,
       }

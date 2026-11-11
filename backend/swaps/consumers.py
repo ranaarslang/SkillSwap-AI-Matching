@@ -42,6 +42,15 @@ worker, and local dev runs one worker) and for the in-memory channel
 layer — it would NOT be correct with multiple workers (that needs
 Redis). If the backend ever scales to several workers, move ONLINE_USERS
 and ACTIVE_CALLS into the channel layer / a shared store.
+
+ONLINE_USERS maps user id -> the set of live channel names for that
+user. A user can hold several connections at once (two tabs, or a phone
++ a laptop on the same account), so presence must be a COUNT, not a
+single flag: the old code kept a plain set of user ids and disconnect()
+discarded the id when ANY connection closed — closing one tab made a
+still-live user look "offline" to callers, while chat messages (which
+use the channel-layer group, not this set) still arrived. A user is
+online while at least one channel is open.
 """
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
@@ -54,8 +63,8 @@ from .views import _attachment_of
 
 User = get_user_model()
 
-# user ids currently holding a live WS connection (single worker — see note)
-ONLINE_USERS: set = set()
+# user id -> set of live channel names for that user (see module note)
+ONLINE_USERS: dict = {}
 # call_id -> {"caller": int, "callee": int, "state": "ringing"|"active"}
 ACTIVE_CALLS: dict = {}
 
@@ -130,7 +139,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         self.user = user
         self.group_name = f"user_{user.id}"
         await self.channel_layer.group_add(self.group_name, self.channel_name)
-        ONLINE_USERS.add(user.id)
+        ONLINE_USERS.setdefault(user.id, set()).add(self.channel_name)
         await self.accept()
 
     async def disconnect(self, close_code):
@@ -139,7 +148,13 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
                 self.group_name, self.channel_name
             )
         if hasattr(self, "user"):
-            ONLINE_USERS.discard(self.user.id)
+            # Only this connection's channel leaves: the user stays online
+            # while any other connection (second tab / device) is open.
+            channels = ONLINE_USERS.get(self.user.id)
+            if channels is not None:
+                channels.discard(self.channel_name)
+                if not channels:
+                    del ONLINE_USERS[self.user.id]
             # If I was mid-call, tell the other side it ended.
             for call_id, call in list(ACTIVE_CALLS.items()):
                 if self.user.id in (call["caller"], call["callee"]):
@@ -283,6 +298,17 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
     async def _call_invite(self, content, call_id):
         to_user_id = content.get("to_user_id")
+        # Defensive: a client sending the id as a string ("3") must not
+        # silently miss the int keys of ONLINE_USERS and look "offline".
+        try:
+            if isinstance(to_user_id, bool) or to_user_id is None:
+                raise ValueError
+            to_user_id = int(to_user_id)
+        except (ValueError, TypeError):
+            await self.send_json(
+                {"type": "error", "detail": "Recipient not found."}
+            )
+            return
         if to_user_id == self.user.id:
             await self.send_json(
                 {"type": "error", "detail": "You cannot call yourself."}
