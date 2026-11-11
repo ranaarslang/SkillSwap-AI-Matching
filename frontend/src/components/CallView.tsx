@@ -108,6 +108,13 @@ export default function CallView(props: Props) {
             className="absolute bottom-3 right-3 w-28 sm:w-44 aspect-video rounded-xl object-cover ring-2 ring-white/70 bg-slate-800"
           />
         )}
+        {/* Round 3f: camera/mic failure is a banner, not a dead end — the
+            call stays live and screen share (which needs neither) works. */}
+        {call.mediaError && call.status !== 'ended' && (
+          <p className="absolute top-3 left-1/2 -translate-x-1/2 max-w-[90%] text-center rounded-full bg-amber-500/90 text-slate-950 text-xs font-semibold px-3 py-2">
+            ⚠ {call.mediaError}
+          </p>
+        )}
         {call.screenSharing && (
           <span className="absolute bottom-3 right-3 w-28 sm:w-44 aspect-video rounded-xl bg-slate-800/60 flex items-end justify-center pb-1.5 text-[11px] font-semibold text-emerald-300 pointer-events-none">
             🖥 Sharing your screen
@@ -142,25 +149,31 @@ export default function CallView(props: Props) {
           <p className="text-slate-200 text-sm font-medium">{call.notice ?? 'Call ended.'}</p>
         ) : (
           <>
+            {/* Round 3f: the control bar renders whatever the media state.
+                Mute/Camera need their local tracks, so they disable without
+                them; Share screen uses getDisplayMedia — independent of
+                camera/mic — so it stays enabled even when getUserMedia
+                failed and there is no local stream at all. */}
             <button
               onClick={props.onToggleMute}
-              disabled={!call.localStream}
+              disabled={!call.localStream || call.localStream.getAudioTracks().length === 0}
+              title={!call.localStream ? 'No microphone available' : undefined}
               className="rounded-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white font-semibold px-5 py-3"
             >
               {call.muted ? '🔇 Unmute' : '🎙 Mute'}
             </button>
             <button
               onClick={props.onToggleCamera}
-              disabled={!call.localStream || call.screenSharing}
-              title={call.screenSharing ? 'Camera controls are off while sharing your screen' : undefined}
+              disabled={!call.localStream || call.localStream.getVideoTracks().length === 0 || call.screenSharing}
+              title={call.screenSharing ? 'Camera controls are off while sharing your screen' : !call.localStream ? 'No camera available' : undefined}
               className="rounded-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white font-semibold px-5 py-3"
             >
               {call.cameraOff ? '📹 Camera on' : '📷 Camera off'}
             </button>
             <button
               onClick={props.onToggleScreenShare}
-              disabled={!call.localStream}
-              className="rounded-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white font-semibold px-5 py-3"
+              title="Share your screen — works even without a camera or microphone"
+              className="rounded-full bg-slate-700 hover:bg-slate-600 text-white font-semibold px-5 py-3"
             >
               {call.screenSharing ? '⏹ Stop sharing' : '🖥 Share screen'}
             </button>

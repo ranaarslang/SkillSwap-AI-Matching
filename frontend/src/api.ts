@@ -86,6 +86,9 @@ export interface Conversation {
     attachment_name?: string | null
   } | null
   unread_count: number
+  /** Round 3f: my messages held for admin approval in this thread.
+   * Shown as a small badge — a held message never replaces the preview. */
+  pending_count?: number
 }
 
 /** One file attached to a chat message (round 3b). `url` is a relative

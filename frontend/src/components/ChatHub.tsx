@@ -305,6 +305,11 @@ export default function ChatHub(props: Props) {
                             {c.last_message
                               ? c.last_message.body || (c.last_message.attachment_name ? `📎 ${c.last_message.attachment_name}` : 'No messages yet — say hello!')
                               : 'No messages yet — say hello!'}
+                            {(c.pending_count ?? 0) > 0 && (
+                              <span className="ml-1 font-semibold text-amber-600">
+                                · ⏳ {c.pending_count} waiting for approval
+                              </span>
+                            )}
                           </span>
                         </span>
                       </button>

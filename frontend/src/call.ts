@@ -31,6 +31,11 @@ export interface CallState {
   screenStream: MediaStream | null
   /** Human-readable end reason, shown while status === 'ended'. */
   notice: string | null
+  /** Round 3f: set when camera/mic could not be acquired (permission
+   * denied, no devices). The call does NOT end for this — the user can
+   * still talk via screen share, and the UI shows this instead of
+   * killing the call with "Could not access your camera or microphone". */
+  mediaError: string | null
 }
 
 const STUN_URL = 'stun:stun.l.google.com:19302'
@@ -55,6 +60,9 @@ export class CallManager {
   private me: User
   private call: CallState | null = null
   private pc: RTCPeerConnection | null = null
+  /** The sender carrying the screen track when it was added with
+   * addTrack (no camera sender existed) — needed to remove it on stop. */
+  private screenSender: RTCRtpSender | null = null
   private pendingOffer: RTCSessionDescriptionInit | null = null
   private pendingCandidates: RTCIceCandidateInit[] = []
   private ringTimer: ReturnType<typeof setTimeout> | null = null
@@ -124,20 +132,50 @@ export class CallManager {
     return pc
   }
 
-  private async attachLocalMedia(pc: RTCPeerConnection): Promise<boolean> {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+  // Round 3f: camera/mic failure must NOT kill the call. Try video+audio,
+  // then audio-only, then proceed with no local media at all (the call
+  // still rings/connects, and screen share — which needs no camera or
+  // mic — stays available). Returns what was acquired; mediaError
+  // describes the shortfall for the UI banner.
+  private async attachLocalMedia(pc: RTCPeerConnection): Promise<'full' | 'audio' | 'none'> {
+    const setStream = (stream: MediaStream): boolean => {
       if (!this.call) {
         stream.getTracks().forEach((t) => t.stop())
         return false
       }
       stream.getTracks().forEach((t) => pc.addTrack(t, stream))
-      this.call = { ...this.call, localStream: stream, muted: false, cameraOff: false }
+      this.call = { ...this.call, localStream: stream, muted: false, cameraOff: false, mediaError: null }
       this.emit()
       return true
-    } catch {
-      return false
     }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      return setStream(stream) ? 'full' : 'none'
+    } catch {
+      /* fall through to audio-only */
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      if (!setStream(stream)) return 'none'
+      if (this.call) {
+        this.call = {
+          ...this.call,
+          mediaError: 'Camera unavailable — audio only. You can still share your screen.',
+        }
+        this.emit()
+      }
+      return 'audio'
+    } catch {
+      /* fall through to no media */
+    }
+    if (this.call) {
+      this.call = {
+        ...this.call,
+        mediaError: 'Could not access your camera or microphone. You can still share your screen.',
+      }
+      this.emit()
+    }
+    return 'none'
   }
 
   private async flushCandidates() {
@@ -171,18 +209,16 @@ export class CallManager {
       screenSharing: false,
       screenStream: null,
       notice: null,
+      mediaError: null,
     }
     this.pendingOffer = null
     this.pendingCandidates = []
     this.emit()
     const pc = this.createPeerConnection(peer.id, callId)
-    const ok = await this.attachLocalMedia(pc)
-    if (!ok || !this.call || this.call.callId !== callId) {
-      if (this.call?.callId === callId) {
-        this.cleanup(`Could not access your camera or microphone. Check the browser permission and try again.`)
-      }
-      return
-    }
+    // Round 3f: a failed camera/mic no longer ends the call — the invite
+    // still goes out and screen share stays available.
+    await this.attachLocalMedia(pc)
+    if (!this.call || this.call.callId !== callId) return
     this.socketRef.current?.sendCall('call.invite', { to_user_id: peer.id, call_id: callId })
     this.ringTimer = setTimeout(() => {
       if (this.call?.callId === callId && this.call.status === 'ringing') {
@@ -201,13 +237,10 @@ export class CallManager {
     this.socketRef.current?.sendCall('call.accept', { call_id: call.callId })
     this.setStatus('connecting')
     const pc = this.createPeerConnection(call.peer.id, call.callId)
-    const ok = await this.attachLocalMedia(pc)
-    if (!ok || !this.call || this.call.callId !== call.callId) {
-      if (this.call?.callId === call.callId) {
-        this.cleanup('Could not access your camera or microphone. Check the browser permission and try again.')
-      }
-      return
-    }
+    // Round 3f: a failed camera/mic no longer ends the call — the answer
+    // still goes out and screen share stays available.
+    await this.attachLocalMedia(pc)
+    if (!this.call || this.call.callId !== call.callId) return
     await this.applyOfferAndAnswer()
   }
 
@@ -249,7 +282,9 @@ export class CallManager {
   }
 
   toggleMute() {
-    if (!this.call?.localStream) return
+    // No audio track (no mic) — nothing to mute; the button is disabled
+    // in the UI too, but guard here as well.
+    if (!this.call?.localStream || this.call.localStream.getAudioTracks().length === 0) return
     const muted = !this.call.muted
     this.call.localStream.getAudioTracks().forEach((t) => {
       t.enabled = !muted
@@ -259,7 +294,8 @@ export class CallManager {
   }
 
   toggleCamera() {
-    if (!this.call?.localStream) return
+    // No video track (no camera, or audio-only) — nothing to switch off.
+    if (!this.call?.localStream || this.call.localStream.getVideoTracks().length === 0) return
     const off = !this.call.cameraOff
     this.call.localStream.getVideoTracks().forEach((t) => {
       t.enabled = !off
@@ -292,13 +328,21 @@ export class CallManager {
       return
     }
     const screenTrack = screen.getVideoTracks()[0]
-    const sender = this.pc.getSenders().find((s) => s.track?.kind === 'video')
-    if (!screenTrack || !sender) {
+    // Round 3f: screen share must work even with no camera/mic. When a
+    // camera video sender exists, swap its track; when there is none
+    // (getUserMedia failed), add the screen as a new video track.
+    let sender = this.pc.getSenders().find((s) => s.track?.kind === 'video')
+    if (!screenTrack) {
       screen.getTracks().forEach((t) => t.stop())
       return
     }
     try {
-      await sender.replaceTrack(screenTrack)
+      if (sender) {
+        await sender.replaceTrack(screenTrack)
+      } else {
+        sender = this.pc.addTrack(screenTrack, screen)
+        this.screenSender = sender
+      }
     } catch {
       screen.getTracks().forEach((t) => t.stop())
       return
@@ -314,6 +358,7 @@ export class CallManager {
   private stopScreenShare() {
     const call = this.call
     if (!call || !call.screenSharing) return
+    const screenTrack = call.screenStream?.getVideoTracks()[0]
     call.screenStream?.getTracks().forEach((t) => {
       try {
         t.stop()
@@ -322,10 +367,24 @@ export class CallManager {
       }
     })
     const cameraTrack = call.localStream?.getVideoTracks()[0]
-    const sender = this.pc?.getSenders().find((s) => s.track?.kind === 'video')
-    if (sender && cameraTrack) {
-      sender.replaceTrack(cameraTrack).catch(() => {})
+    // The sender carrying the screen track: the one added for it, or the
+    // camera sender whose track was replaced.
+    const sender =
+      this.screenSender ??
+      this.pc?.getSenders().find((s) => s.track === screenTrack)
+    if (sender) {
+      if (cameraTrack) {
+        sender.replaceTrack(cameraTrack).catch(() => {})
+      } else {
+        // No camera to revert to — remove the screen track entirely.
+        try {
+          this.pc?.removeTrack(sender)
+        } catch {
+          /* already removed */
+        }
+      }
     }
+    this.screenSender = null
     this.call = { ...call, screenSharing: false, screenStream: null }
     this.emit()
   }
@@ -341,6 +400,7 @@ export class CallManager {
       }
       this.pc = null
     }
+    this.screenSender = null
     if (this.call?.localStream) {
       this.call.localStream.getTracks().forEach((t) => t.stop())
     }
@@ -350,7 +410,7 @@ export class CallManager {
     this.pendingOffer = null
     this.pendingCandidates = []
     if (this.call) {
-      this.call = { ...this.call, status: 'ended', notice, localStream: null, remoteStream: null, screenSharing: false, screenStream: null }
+      this.call = { ...this.call, status: 'ended', notice, localStream: null, remoteStream: null, screenSharing: false, screenStream: null, mediaError: null }
       this.emit()
       this.endTimer = setTimeout(() => {
         const current = this.call
@@ -389,6 +449,7 @@ export class CallManager {
         screenSharing: false,
         screenStream: null,
         notice: null,
+        mediaError: null,
       }
       this.pendingOffer = null
       this.pendingCandidates = []

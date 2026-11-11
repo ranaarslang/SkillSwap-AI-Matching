@@ -507,8 +507,17 @@ def conversations(request):
                 and m.sender_id != me.id):
             continue
         peer = m.receiver if m.sender_id == me.id else m.sender
-        if peer.id not in peers:
-            peers[peer.id] = {"peer": peer, "last": m}
+        info = peers.setdefault(
+            peer.id, {"peer": peer, "last": None, "last_approved": None,
+                      "pending_count": 0})
+        if info["last"] is None:
+            info["last"] = m
+        if (m.moderation_status == ChatMessage.ModerationStatus.PENDING
+                and m.sender_id == me.id):
+            info["pending_count"] += 1
+        if (info["last_approved"] is None
+                and m.moderation_status == ChatMessage.ModerationStatus.APPROVED):
+            info["last_approved"] = m
     out = []
     for peer_id, info in peers.items():
         unread = ChatMessage.objects.filter(
@@ -516,21 +525,31 @@ def conversations(request):
             moderation_status=ChatMessage.ModerationStatus.APPROVED,
         ).count()
         last = info["last"]
-        last_att = _attachment_of(last)
-        if last.moderation_status == ChatMessage.ModerationStatus.PENDING:
+        # Round 3f: the preview must come from the last DELIVERED
+        # (approved) message. Previously the preview was the most recent
+        # message whatever its state, so one held/rejected message made
+        # the whole thread look blocked ("Waiting for admin approval" /
+        # "Message not approved" as the preview) even though every other
+        # message was fine and the composer still worked. A held message
+        # is now only a small badge (pending_count); it never replaces
+        # the preview, and it never disables the composer.
+        show = info["last_approved"] or last
+        show_att = _attachment_of(show)
+        if show.moderation_status == ChatMessage.ModerationStatus.PENDING:
             preview = "⏳ Waiting for admin approval"
-        elif last.moderation_status == ChatMessage.ModerationStatus.REJECTED:
+        elif show.moderation_status == ChatMessage.ModerationStatus.REJECTED:
             preview = "🚫 Message not approved"
         else:
-            preview = last.message_body
+            preview = show.message_body
         out.append({
             "peer": UserMiniSerializer(info["peer"]).data,
             "last_message": {
                 "body": preview,
                 "created_at": last.sent_at.isoformat(),
                 "sender_id": last.sender_id,
-                "attachment_name": last_att.original_filename if last_att else None,
+                "attachment_name": show_att.original_filename if show_att else None,
             },
+            "pending_count": info["pending_count"],
             "unread_count": unread,
         })
     out.sort(key=lambda c: c["last_message"]["created_at"], reverse=True)

@@ -1139,6 +1139,81 @@ localhost-URL build.
   wait used "Admin Panel" text, which resolves to the hidden desktop
   sidebar button on mobile — it now waits for the Users tab content.)
 
+## Round 3f — fix round (2026-11-11, two issues from the parent's live re-check 15:16–15:18 PKT)
+
+### Issue A — moderation false positive + chat input disabled (reported serious)
+**Investigation — the filter did NOT flag the message.** Evidence, all
+checked against the live site/API on 2026-11-11 ~15:20 PKT:
+- `message_filter.flag_reasons()` returns `[]` for all four seeded
+  maya↔leo texts and for the quoted text ("Hey Leo! I saw your Python
+  skills…"); locked in as regression tests in
+  `backend/swaps/tests.py` (seeded + ordinary texts clean; phone/link
+  flagged; `manage.py test swaps` passes).
+- Live API as maya showed all four seeded messages `approved` with
+  empty `flag_reason`; the only non-approved message in the thread was
+  the 14:26 verification test message ("my number is 0300 1234567"),
+  correctly flagged `phone` and since REJECTED by the user in the admin
+  queue. Two "ok" messages sent after it are APPROVED — clean messages
+  send fine while a flagged one is pending/rejected.
+- The strings "blocked by moderation" and "Chat is unavailable until
+  your message is approved" exist nowhere in the repo, git history, or
+  the live bundle — the re-check's wording was a paraphrase of the ⏳/🚫
+  states. **The real defect was the conversation preview:** it showed
+  the most recent message whatever its state, so one held/rejected
+  message made the whole thread read "⏳ Waiting for admin approval" /
+  "🚫 Message not approved" — the thread looked blocked even though
+  every other message was fine and the composer never was disabled
+  (no code path disables it on pending state).
+**Fix:** `views.conversations()` now previews the last APPROVED message
+and returns `pending_count` (own held messages); a held message is only
+a small "⏳ N waiting for approval" badge (`api.ts` Conversation type +
+`ChatHub.tsx` list). The held message's ⏳/🚫 note stays attached to
+that one bubble only. No live data was touched: the rejected test
+message stays as history (correct outcome); the fix only changes what
+the preview shows, so the live thread now previews the last delivered
+message again.
+
+### Issue B — screen-share button invisible when camera/mic fail
+Root cause: `call.ts` `startCall`/`acceptCall` called `cleanup()` when
+`getUserMedia` threw, so the call ended instantly with "Could not
+access your camera or microphone" and `CallView` rendered only the
+ended notice — no control bar at all. All three control buttons were
+also `disabled={!call.localStream}`.
+**Fix:** `call.ts` — new `CallState.mediaError`; `attachLocalMedia`
+now falls back video+audio → audio-only → no media and never kills
+the call (invite/answer still go out); `toggleScreenShare` uses
+`addTrack` when no camera video sender exists (tracked via
+`screenSender`, removed on stop when there is no camera to revert
+to); `toggleMute`/`toggleCamera` guard on actual track presence.
+`CallView.tsx` — the control bar renders in every active state; Mute /
+Camera disable only without their tracks, Share screen stays enabled
+whenever the call is active (getDisplayMedia needs no camera/mic),
+and the media failure shows as an amber banner instead of a dead end.
+
+### Verification (round 3f, 2026-11-11)
+- `manage.py test swaps` — 4 tests pass (filter regression cases).
+- `npx tsc --noEmit` clean.
+- Playwright + API (`~/workspace/.scratch-skillswap-r3/verify-r3f.py`,
+  vite preview :4173 + local Daphne :8000, fresh seed) — **40/40
+  passed**, desktop 1280×800 + 390px, zero page errors: preview stays
+  the last approved body with a pending message present,
+  `pending_count` 0→1→0 through hold/approve/reject; clean message
+  sends (API + UI) while one is pending; recipient never sees pending;
+  composer enabled on desktop + 390px; approve delivers to Leo, reject
+  stays invisible; happy-path call (media, mute, share, stop, Back);
+  no-media call stays ringing with banner, Share enabled, Mute/Camera
+  disabled, share starts/stops via a stubbed getDisplayMedia (canvas
+  stream) with no camera/mic. Screenshots:
+  `~/workspace/.scratch-skillswap-r3/shots-r3f/`. (Two test-only fixes
+  along the way: the approvals-queue check used POST on a GET-only
+  endpoint; the 390px navigation used the hidden desktop sidebar —
+  mobile uses the bottom nav "Chat" button. One run also caught a stale
+  vite preview serving the pre-3f bundle — rebuilt and re-verified.)
+- **Still NOT verified: a real two-user call** — remote screen-share
+  rendering and remote mute/camera-off reflection need a live
+  two-device test (sandbox blocks UDP). Screen share without camera/mic
+  is verified only to the local badge/track level here.
+
 ## Quality audit (round 3c, 2026-11-11) — traceability + clean-clone run
 
 - `TRACEABILITY.md` (committed with this round): every SRS REQ-01–05 +
