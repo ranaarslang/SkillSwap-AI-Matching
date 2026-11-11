@@ -121,6 +121,16 @@ export default function FeedbackHub({ sessions, currentUserId, peerProfiles, loa
         </div>
       )}
 
+      {/* The confirmation lives OUTSIDE the form below (round-3c audit
+        fix): a successful submit makes the partner un-rateable, so the
+        form unmounts and flips to "All caught up" — if this banner lived
+        inside the form, the user would never see the trust update. */}
+      {result && (
+        <div role="status" className="rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm px-4 py-3">
+          Thank you! {result.name}&apos;s trust score is now <span className="font-bold">{result.trust}</span>.
+        </div>
+      )}
+
       {loading ? (
         <p className="text-slate-500 text-sm">Loading your sessions…</p>
       ) : rateablePartners.length === 0 ? (
@@ -201,11 +211,6 @@ export default function FeedbackHub({ sessions, currentUserId, peerProfiles, loa
           </div>
 
           {submitError && <div role="alert" className="rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2">{submitError}</div>}
-          {result && (
-            <div role="status" className="rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm px-3 py-2">
-              Thank you! {result.name}&apos;s trust score is now <span className="font-bold">{result.trust}</span>.
-            </div>
-          )}
 
           <button
             type="submit"

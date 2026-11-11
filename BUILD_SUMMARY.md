@@ -1015,12 +1015,20 @@ is in `ROUND3-REQUIREMENTS.md`, committed with this round for the viva.
     them and the submit then failed with a 400. Fixed in the same round:
     `GET /api/reviews/?author=me` (new filter) + the hub seeds its
     reviewed-session list from the server on mount
-    (`api.getMyReviews()`). The remaining 3 failures in that pass were
-    test races (the dashboard heading renders before `loadAll`
-    finishes; the panel mounts before the profile lands) — the app
-    already showed the values a few seconds later, verified by a
-    dedicated probe (`probe-clean-clone.py`). The re-run after the fix
-    passed **43/43**.
+    (`api.getMyReviews()`).
+  - That fix exposed a **second latent bug in the same hub**: the
+    "Thank you" confirmation banner lived INSIDE the review form, and a
+    successful submit makes the partner un-rateable, so the form
+    unmounts and flips to "All caught up" — the user never saw the
+    trust update (the review itself saved fine; the confirmation was
+    lost). Fixed by moving the banner outside the form/empty-state
+    ternary so it survives the flip.
+  - The remaining 3 failures in that first pass were test races (the
+    dashboard heading renders before `loadAll` finishes; the panel
+    mounts before the profile lands) — the app already showed the
+    values a few seconds later, verified by a dedicated probe
+    (`probe-clean-clone.py`). The re-run after both fixes passed
+    **43/43**.
 - **README updated in this round:** the "What each feature does"
   section now covers the admin panel, video call, file/code sharing,
   Find people, rating visibility, Message Approvals, country location
