@@ -191,9 +191,9 @@ export default function ProfilePanel({
         </button>
       </form>
 
-      <form onSubmit={changePassword} className="card mt-6 space-y-4 p-6 sm:p-7">
+      <form id="change-password" onSubmit={changePassword} className="card mt-6 space-y-4 p-6 sm:p-7">
         <div>
-          <h2 className="text-lg font-bold tracking-tight text-slate-900">Change Password</h2>
+          <h2 tabIndex={-1} className="text-lg font-bold tracking-tight text-slate-900">Change Password</h2>
           <p className="mt-0.5 text-sm text-slate-500">
             Set a password of your own — it takes effect immediately and stays yours. (Your current password is checked first.)
           </p>

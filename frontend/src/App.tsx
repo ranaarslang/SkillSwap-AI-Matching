@@ -69,6 +69,12 @@ export default function App() {
   selectedPeerRef.current = selectedPeer
   const callManagerRef = useRef<CallManager | null>(null)
   const [callState, setCallState] = useState<CallState | null>(null)
+  // Header account menu: the ONLY Log out / Settings entry reachable on
+  // phones — the desktop sidebar (and its Log out button) is hidden
+  // below the md breakpoint, so the header chip must open a real tap
+  // menu on every width.
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false)
+  const profileMenuRef = useRef<HTMLDivElement | null>(null)
 
   const loadAll = useCallback(async () => {
     setLoading(true)
@@ -149,6 +155,33 @@ export default function App() {
     return () => window.removeEventListener('skillswap:unauthorized', onUnauthorized)
   }, [doLogout])
 
+  // Account menu: close on outside tap/click or Escape. Touch only —
+  // never hover — so it works the same on phones and desktop.
+  useEffect(() => {
+    if (!profileMenuOpen) return
+    const onPointerDown = (e: MouseEvent | TouchEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
+        setProfileMenuOpen(false)
+      }
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setProfileMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('touchstart', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('touchstart', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [profileMenuOpen])
+
+  // The menu is a navigation control: leaving the tab closes it.
+  useEffect(() => {
+    setProfileMenuOpen(false)
+  }, [tab])
+
   // Dedicated admin login lives at #/admin-login (no signup there).
   useEffect(() => {
     const onHash = () => setAdminLogin(window.location.hash === '#/admin-login')
@@ -221,6 +254,35 @@ export default function App() {
     doLogout()
   }
 
+  // Account-menu actions: every one closes the menu first.
+  function openProfileTab() {
+    setProfileMenuOpen(false)
+    setTab('profile')
+  }
+
+  function openChangePassword() {
+    setProfileMenuOpen(false)
+    setTab('profile')
+    // ProfilePanel mounts on the tab switch; bring its Change Password
+    // card into view once it exists, and move focus to its heading.
+    window.setTimeout(() => {
+      const card = document.getElementById('change-password')
+      card?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      const heading = card?.querySelector('h2')
+      if (heading instanceof HTMLElement) heading.focus({ preventScroll: true })
+    }, 100)
+  }
+
+  function backToStudentApp() {
+    setProfileMenuOpen(false)
+    setTab('dashboard')
+  }
+
+  function logoutFromMenu() {
+    setProfileMenuOpen(false)
+    void handleLogout()
+  }
+
   async function selectPeer(peer: User | null) {
     setSelectedPeer(peer)
     setMessages([])
@@ -289,6 +351,13 @@ export default function App() {
     window.localStorage.setItem('skillswap-admin-theme', adminTheme)
   }, [adminTheme])
 
+  const menuItemCls = `flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm font-semibold focus:outline-none ${
+    isAdminView ? 'hover:bg-white/5 focus:bg-white/5' : 'hover:bg-slate-100 focus:bg-slate-100'
+  }`
+  const menuLogoutCls = `flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm font-semibold focus:outline-none ${
+    isAdminView ? 'text-red-400 hover:bg-white/5 focus:bg-white/5' : 'text-red-600 hover:bg-red-50 focus:bg-red-50'
+  }`
+
   if (!authed || !user) {
     return <AuthScreen variant={adminLogin ? 'admin' : undefined} adminTheme={adminTheme} onAuthed={handleAuthed} />
   }
@@ -349,17 +418,36 @@ export default function App() {
               />
             </div>
           )}
-          <div className="ml-auto flex shrink-0 items-center gap-2">
+          {/* Header account menu — the ONLY Log out / Settings entry
+              reachable on phones: the desktop sidebar (and its Log out
+              button) is hidden below the md breakpoint. The chip is a
+              real button that opens a tap menu on every width. */}
+          <div ref={profileMenuRef} className="relative ml-auto flex shrink-0 items-center gap-2">
             {isAdminView ? (
-              <>
+              <button
+                type="button"
+                onClick={() => setProfileMenuOpen((o) => !o)}
+                aria-haspopup="menu"
+                aria-expanded={profileMenuOpen}
+                aria-label="Account menu"
+                className="flex cursor-pointer items-center gap-2 rounded-full border border-[var(--adm-border)] bg-[var(--adm-surface)] py-1 pl-1 pr-2.5 shadow-sm transition hover:bg-white/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--adm-accent)]"
+              >
                 <Avatar user={user} color={profile?.avatar_color} size="sm" />
                 <span className="hidden text-sm font-semibold text-[var(--adm-text)] sm:block">{displayName(user)}</span>
                 <span className="hidden rounded-full bg-[var(--adm-accent-soft)] px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-[var(--adm-accent-text)] ring-1 ring-inset ring-[var(--adm-accent-ring)] sm:block">
                   Staff
                 </span>
-              </>
+                <span aria-hidden className="text-[10px] text-[var(--adm-text-dim)]">▾</span>
+              </button>
             ) : (
-              <div className="flex items-center gap-2 rounded-full border border-white/15 bg-white/10 py-1 pl-1 pr-2.5 shadow-sm backdrop-blur">
+              <button
+                type="button"
+                onClick={() => setProfileMenuOpen((o) => !o)}
+                aria-haspopup="menu"
+                aria-expanded={profileMenuOpen}
+                aria-label="Account menu"
+                className="flex cursor-pointer items-center gap-2 rounded-full border border-white/15 bg-white/10 py-1 pl-1 pr-2.5 shadow-sm backdrop-blur transition hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+              >
                 <Avatar user={user} color={profile?.avatar_color} size="sm" />
                 <span className="hidden text-sm font-semibold text-white sm:block">{displayName(user)}</span>
                 {profile && (
@@ -370,6 +458,38 @@ export default function App() {
                 {profile?.verified_badge && (
                   <span className="hidden text-[11px] font-bold text-violet-300 sm:inline" title="Verified account">✓</span>
                 )}
+                <span aria-hidden className="text-[10px] text-indigo-200/80">▾</span>
+              </button>
+            )}
+            {profileMenuOpen && (
+              <div
+                role="menu"
+                aria-label="Account menu"
+                className={`absolute right-0 top-full z-50 mt-2 w-56 max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border py-1.5 shadow-xl ${
+                  isAdminView
+                    ? 'border-slate-700 bg-slate-900 text-slate-200'
+                    : 'border-slate-200 bg-white text-slate-700'
+                }`}
+              >
+                <div className={`border-b px-3.5 py-2.5 ${isAdminView ? 'border-slate-800' : 'border-slate-100'}`}>
+                  <p className={`truncate text-sm font-bold ${isAdminView ? 'text-white' : 'text-slate-900'}`}>{displayName(user)}</p>
+                  <p className={`truncate text-xs ${isAdminView ? 'text-slate-400' : 'text-slate-500'}`}>{user.email}</p>
+                </div>
+                {isAdminView && (
+                  <button type="button" role="menuitem" onClick={backToStudentApp} className={menuItemCls}>
+                    <span aria-hidden>←</span> Back to student app
+                  </button>
+                )}
+                <button type="button" role="menuitem" onClick={openProfileTab} className={menuItemCls}>
+                  <IconUser className="h-4 w-4 shrink-0" /> Profile / Settings
+                </button>
+                <button type="button" role="menuitem" onClick={openChangePassword} className={menuItemCls}>
+                  <IconShield className="h-4 w-4 shrink-0" /> Change Password
+                </button>
+                <div className={`my-1 border-t ${isAdminView ? 'border-slate-800' : 'border-slate-100'}`} />
+                <button type="button" role="menuitem" onClick={logoutFromMenu} className={menuLogoutCls}>
+                  <IconLogout className="h-4 w-4 shrink-0" /> Log out
+                </button>
               </div>
             )}
           </div>
