@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
-import type { MatchProfile } from '../api'
-import { displayName } from '../api'
-import { Avatar, Chip, IconPin, ScoreRing, TrustBadge, VerifiedBadge } from './ui'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { MatchProfile, Profile } from '../api'
+import { api, displayName } from '../api'
+import { Avatar, Chip, IconPin, RatingStars, ScoreRing, TrustBadge, VerifiedBadge } from './ui'
 
 interface Props {
   matches: MatchProfile[]
@@ -10,6 +10,8 @@ interface Props {
   onClearSearch: () => void
   onConnect: (profile: MatchProfile) => void
   onViewProfile: (profile: MatchProfile) => void
+  /** Directory (server-side name search) results open the profile modal too. */
+  onViewDirectoryProfile: (profile: Profile) => void
   sessionCount: number
   loading: boolean
   error: string
@@ -64,6 +66,7 @@ function MatchCard({
             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500 ring-1 ring-inset ring-slate-200">below 50%</span>
           )}
           <TrustBadge score={profile.trust_score} />
+          <RatingStars average={profile.average_rating} count={profile.review_count} />
         </div>
       </div>
 
@@ -111,9 +114,79 @@ function MatchCard({
   )
 }
 
+/** Compact card for a directory-search hit (server-side name search). */
+function DirectoryCard({
+  profile,
+  onConnect,
+  onViewProfile,
+}: {
+  profile: Profile
+  onConnect: () => void
+  onViewProfile: () => void
+}) {
+  return (
+    <article className="card-interactive flex flex-col gap-3 p-5">
+      <div className="flex items-start gap-3">
+        <button onClick={onViewProfile} aria-label={`View ${displayName(profile.user)}'s profile`} className="shrink-0 rounded-full transition-transform hover:scale-105">
+          <Avatar user={profile.user} color={profile.avatar_color} />
+        </button>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={onViewProfile} className="truncate text-[15px] font-bold text-slate-900 hover:text-indigo-700 hover:underline">
+              {displayName(profile.user)}
+            </button>
+            {profile.verified_badge && <VerifiedBadge />}
+          </div>
+          <p className="truncate text-sm text-slate-500">ID {profile.user.id} · @{profile.user.username}</p>
+          {profile.location && (
+            <p className="mt-0.5 inline-flex items-center gap-1 text-sm text-slate-500">
+              <IconPin className="h-3.5 w-3.5" /> {profile.location}
+            </p>
+          )}
+        </div>
+        <div className="flex flex-col items-end gap-1.5">
+          <TrustBadge score={profile.trust_score} />
+          <RatingStars average={profile.average_rating} count={profile.review_count} />
+        </div>
+      </div>
+      {profile.teach_skills?.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Can teach you</p>
+          <div className="flex flex-wrap gap-1.5">{profile.teach_skills.map((s) => <Chip key={s}>{s}</Chip>)}</div>
+        </div>
+      )}
+      {profile.learn_skills?.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Wants to learn</p>
+          <div className="flex flex-wrap gap-1.5">
+            {profile.learn_skills.map((s) => (
+              <Chip key={s} tone="emerald">{s}</Chip>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="flex gap-2 pt-1">
+        <button onClick={onConnect} className="btn-primary flex-1">
+          Message
+        </button>
+        <button onClick={onViewProfile} className="btn-secondary flex-1">
+          View profile
+        </button>
+      </div>
+    </article>
+  )
+}
+
 export default function Dashboard(props: Props) {
   const { matches, community, searchQuery, onClearSearch } = props
   const [cityFilter, setCityFilter] = useState('All cities')
+  // Live directory search: the navbar search above only filters the
+  // matches/community lists loaded at login, so a friend who signed up
+  // later (or with no skill overlap) is unfindable there. This queries
+  // the server by name/username instead.
+  const [dirResults, setDirResults] = useState<Profile[] | null>(null)
+  const [dirLoading, setDirLoading] = useState(false)
+  const dirSeq = useRef(0)
 
   const cities = useMemo(() => {
     const set = new Set<string>()
@@ -124,6 +197,34 @@ export default function Dashboard(props: Props) {
   }, [matches, community])
 
   const q = searchQuery.trim().toLowerCase()
+
+  useEffect(() => {
+    const query = searchQuery.trim()
+    if (query.length < 2) {
+      setDirResults(null)
+      setDirLoading(false)
+      return
+    }
+    setDirLoading(true)
+    const seq = ++dirSeq.current
+    const timer = window.setTimeout(() => {
+      api
+        .searchUsers(query)
+        .then((r) => {
+          if (dirSeq.current === seq) {
+            setDirResults(r)
+            setDirLoading(false)
+          }
+        })
+        .catch(() => {
+          if (dirSeq.current === seq) {
+            setDirResults([])
+            setDirLoading(false)
+          }
+        })
+    }, 300)
+    return () => window.clearTimeout(timer)
+  }, [searchQuery])
   const applyFilters = (list: MatchProfile[]) =>
     list.filter((m) => (!q || matchesQuery(m, q)) && (cityFilter === 'All cities' || m.location === cityFilter))
   const filteredMatches = useMemo(() => applyFilters(matches), [matches, q, cityFilter])
@@ -182,6 +283,44 @@ export default function Dashboard(props: Props) {
           </span>
         )}
       </div>
+
+      {/* Find people — live directory search by name (not just your matches) */}
+      {q.length >= 2 && (
+        <section aria-label="Find people">
+          <h2 className="mb-1 flex items-center gap-2 text-lg font-extrabold tracking-tight text-slate-900">
+            Find people{' '}
+            {dirResults !== null && (
+              <span className="rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 px-2 py-0.5 text-xs font-bold text-white shadow-sm">{dirResults.length}</span>
+            )}
+          </h2>
+          <p className="mb-3 text-sm text-slate-500">Everyone on the platform matching &lsquo;{searchQuery.trim()}&rsquo; — even if they are not one of your AI matches.</p>
+          {dirLoading ? (
+            <p className="text-sm text-slate-500">Searching people…</p>
+          ) : dirResults !== null && dirResults.length === 0 ? (
+            <p className="card p-4 text-sm text-slate-500">No people match &lsquo;{searchQuery.trim()}&rsquo;. Try another name or username.</p>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {(dirResults ?? []).map((p) => (
+                <DirectoryCard
+                  key={p.user.id}
+                  profile={p}
+                  onConnect={() =>
+                    props.onConnect({
+                      ...p,
+                      match_score: 0,
+                      location_bonus: 0,
+                      same_location: false,
+                      can_teach_you: [],
+                      you_can_teach_them: [],
+                    })
+                  }
+                  onViewProfile={() => props.onViewDirectoryProfile(p)}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {props.loading ? (
         <p className="text-sm text-slate-500">Finding your AI matches…</p>

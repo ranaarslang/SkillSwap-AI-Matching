@@ -169,7 +169,7 @@ export default function AdminUserDetail({ userId, currentUserId, onBack, onMessa
               {detail.verified_badge && <VerifiedBadge />}
               {detail.is_staff && <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Admin</span>}
             </div>
-            <p className="text-sm text-slate-400">@{detail.user.username} · {detail.user.email}</p>
+            <p className="text-sm text-slate-400">ID {detail.user.id} · @{detail.user.username} · {detail.user.email}</p>
             <p className="mt-1 text-sm text-slate-400">
               Joined {new Date(detail.date_joined).toLocaleDateString()}
               {detail.location ? ` · 📍 ${detail.location}` : ''}

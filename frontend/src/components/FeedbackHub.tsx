@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Profile, SessionItem, User } from '../api'
 import { api, ApiError, displayName } from '../api'
 import { Avatar } from './ui'
@@ -9,13 +9,16 @@ interface Props {
   peerProfiles: Map<number, import('../api').MatchProfile>
   loading: boolean
   error: string
+  /** Session to pre-select (from a "Rate" button on a completed session). */
+  preselectSessionId?: number | null
+  onPreselectConsumed?: () => void
 }
 
 function otherPerson(s: SessionItem, me: number): User {
   return s.partner_one.id === me ? s.partner_two : s.partner_one
 }
 
-export default function FeedbackHub({ sessions, currentUserId, peerProfiles, loading, error }: Props) {
+export default function FeedbackHub({ sessions, currentUserId, peerProfiles, loading, error, preselectSessionId, onPreselectConsumed }: Props) {
   // Partners limited to completed-session partners only
   const completedPartners = useMemo(() => {
     const map = new Map<number, { partner: User; session: SessionItem }>()
@@ -34,8 +37,25 @@ export default function FeedbackHub({ sessions, currentUserId, peerProfiles, loa
   const [submitError, setSubmitError] = useState('')
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<{ name: string; trust: number } | null>(null)
+  // Sessions already reviewed in this visit — one review per session per
+  // author (server-enforced); hide them so a duplicate can't be attempted.
+  const [reviewedSessionIds, setReviewedSessionIds] = useState<number[]>([])
+  const rateablePartners = completedPartners.filter((p) => !reviewedSessionIds.includes(p.session.id))
 
-  const selected = completedPartners.find((p) => String(p.partner.id) === selectedId)
+  // A "Rate" button on a completed session lands here with that session
+  // pre-selected, so the user goes straight to the stars.
+  useEffect(() => {
+    if (!preselectSessionId) return
+    const entry = completedPartners.find((p) => p.session.id === preselectSessionId)
+    if (entry) {
+      setSelectedId(String(entry.partner.id))
+      setResult(null)
+      setSubmitError('')
+    }
+    onPreselectConsumed?.()
+  }, [preselectSessionId, completedPartners, onPreselectConsumed])
+
+  const selected = rateablePartners.find((p) => String(p.partner.id) === selectedId)
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -48,6 +68,8 @@ export default function FeedbackHub({ sessions, currentUserId, peerProfiles, loa
       // Fetch the partner's updated trust score
       const updated: Profile = await api.getProfile(selected.partner.id)
       setResult({ name: displayName(selected.partner), trust: updated.trust_score })
+      setReviewedSessionIds((prev) => [...prev, selected.session.id])
+      setSelectedId('')
       setComment('')
       setRating(0)
     } catch (err) {
@@ -73,10 +95,16 @@ export default function FeedbackHub({ sessions, currentUserId, peerProfiles, loa
 
       {loading ? (
         <p className="text-slate-500 text-sm">Loading your sessions…</p>
-      ) : completedPartners.length === 0 ? (
+      ) : rateablePartners.length === 0 ? (
         <div className="card p-10 text-center">
-          <p className="font-semibold text-slate-800">No completed sessions yet</p>
-          <p className="text-sm text-slate-500 mt-1">Once a session is marked complete, your partner will appear here for review.</p>
+          <p className="font-semibold text-slate-800">
+            {completedPartners.length > 0 ? 'All caught up' : 'No completed sessions yet'}
+          </p>
+          <p className="text-sm text-slate-500 mt-1">
+            {completedPartners.length > 0
+              ? 'You have already rated every completed session — one review per session.'
+              : 'Once a session is marked complete, your partner will appear here for review.'}
+          </p>
         </div>
       ) : (
         <form onSubmit={submit} className="card p-6 space-y-4">
@@ -94,7 +122,7 @@ export default function FeedbackHub({ sessions, currentUserId, peerProfiles, loa
               className="input"
             >
               <option value="" disabled>Select a partner…</option>
-              {completedPartners.map(({ partner }) => (
+              {rateablePartners.map(({ partner }) => (
                 <option key={partner.id} value={partner.id}>
                   {displayName(partner)} (@{partner.username})
                 </option>

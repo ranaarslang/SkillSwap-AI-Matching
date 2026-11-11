@@ -58,7 +58,8 @@ export default function App() {
   const [loadError, setLoadError] = useState('')
   const [wsStatus, setWsStatus] = useState<WsStatus>('offline')
   const [toast, setToast] = useState('')
-  const [viewingProfile, setViewingProfile] = useState<{ profile: MatchProfile; isMatch: boolean; hideScore?: boolean } | null>(null)
+  const [viewingProfile, setViewingProfile] = useState<{ profile: Profile; isMatch: boolean; hideScore?: boolean } | null>(null)
+  const [feedbackPreselect, setFeedbackPreselect] = useState<number | null>(null)
   const socketRef = useRef<ChatSocket | null>(null)
   const selectedPeerRef = useRef<User | null>(null)
   selectedPeerRef.current = selectedPeer
@@ -118,6 +119,7 @@ export default function App() {
     setSelectedPeer(null)
     setMessages([])
     setViewingProfile(null)
+    setFeedbackPreselect(null)
     setTab('dashboard')
   }, [])
 
@@ -196,7 +198,7 @@ export default function App() {
     }
   }
 
-  function openChatWith(peerProfile: MatchProfile) {
+  function openChatWith(peerProfile: Profile) {
     setViewingProfile(null)
     setSelectedPeer(peerProfile.user)
     setTab('chat')
@@ -426,6 +428,7 @@ export default function App() {
               onClearSearch={() => setSearchQuery('')}
               onConnect={openChatWith}
               onViewProfile={(p) => setViewingProfile({ profile: p, isMatch: matches.some((m) => m.user.id === p.user.id), hideScore: false })}
+              onViewDirectoryProfile={(p) => setViewingProfile({ profile: p, isMatch: false, hideScore: true })}
               sessionCount={sessions.length}
               loading={loading}
               error={loadError}
@@ -446,10 +449,22 @@ export default function App() {
               onSent={handleSent}
               onRefreshConversations={refreshConversations}
               onSessionsChanged={refreshSessions}
+              onRateSession={(s) => {
+                setFeedbackPreselect(s.id)
+                setTab('feedback')
+              }}
             />
           )}
           {tab === 'feedback' && (
-            <FeedbackHub sessions={sessions} currentUserId={user.id} peerProfiles={peerProfiles} loading={loading} error={loadError} />
+            <FeedbackHub
+              sessions={sessions}
+              currentUserId={user.id}
+              peerProfiles={peerProfiles}
+              loading={loading}
+              error={loadError}
+              preselectSessionId={feedbackPreselect}
+              onPreselectConsumed={() => setFeedbackPreselect(null)}
+            />
           )}
           {tab === 'admin' && user.is_staff && (
             <AdminPanel

@@ -8,7 +8,22 @@ Profile shape: {id, user, bio, location, availability, portfolio_link,
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
+from django.db.models import Avg, Count
+
 from .models import ChatMessage, IntegrityReview, Profile, SwapSession, UserSkill
+
+
+def rating_stats_for(user):
+    """(average_rating, review_count) for a user from IntegrityReview.
+
+    average_rating is None when the user has no reviews yet; trust_score
+    is a separate ledger field and is NOT derived here.
+    """
+    agg = IntegrityReview.objects.filter(target_user=user).aggregate(
+        avg=Avg("rating_stars"), count=Count("id"),
+    )
+    avg = agg["avg"]
+    return (round(float(avg), 1) if avg is not None else None, agg["count"])
 
 User = get_user_model()
 
@@ -32,6 +47,8 @@ class ProfileSerializer(serializers.ModelSerializer):
     user = UserMiniSerializer(read_only=True)
     teach_skills = serializers.SerializerMethodField()
     learn_skills = serializers.SerializerMethodField()
+    average_rating = serializers.SerializerMethodField()
+    review_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Profile
@@ -39,6 +56,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "id", "user", "bio", "location", "availability", "portfolio_link",
             "avatar_color", "trust_score", "verified_badge",
             "teach_skills", "learn_skills",
+            "average_rating", "review_count",
         )
 
     def _skills(self, profile, skill_type):
@@ -53,6 +71,18 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     def get_learn_skills(self, obj):
         return self._skills(obj, UserSkill.SkillType.LEARN)
+
+    def _rating_stats(self, obj):
+        # One aggregate per profile, shared by both rating fields.
+        if not hasattr(obj, "_rating_stats_cache"):
+            obj._rating_stats_cache = rating_stats_for(obj.user)
+        return obj._rating_stats_cache
+
+    def get_average_rating(self, obj):
+        return self._rating_stats(obj)[0]
+
+    def get_review_count(self, obj):
+        return self._rating_stats(obj)[1]
 
 
 class ProfileUpdateSerializer(serializers.Serializer):

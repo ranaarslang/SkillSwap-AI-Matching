@@ -246,6 +246,37 @@ def profile_detail(request, user_id):
     return Response(ProfileSerializer(profile).data)
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def search_users(request):
+    """Directory search: find any student by name/username.
+
+    The dashboard's navbar search only filters the matches/community
+    lists loaded at login, so a friend who signed up later (or with no
+    skill overlap) is unfindable there. This is a live server-side
+    search over all student accounts: first/last name or username,
+    icontains. Excludes the caller and staff accounts; capped at 20.
+    """
+    q = (request.query_params.get("q") or "").strip()
+    if len(q) < 2:
+        return Response(
+            {"detail": "Search needs at least 2 characters."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    qs = (
+        User.objects.filter(is_staff=False)
+        .exclude(id=request.user.id)
+        .filter(
+            Q(first_name__icontains=q)
+            | Q(last_name__icontains=q)
+            | Q(username__icontains=q)
+        )
+        .order_by("username")[:20]
+    )
+    profiles = [Profile.objects.get_or_create(user=u)[0] for u in qs]
+    return Response(ProfileSerializer(profiles, many=True).data)
+
+
 # ---------------------------------------------------------------- matching
 def _scored_profiles(me):
     """All other users' profiles + match data, via the matcher interface.

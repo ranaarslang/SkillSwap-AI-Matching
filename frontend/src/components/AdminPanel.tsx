@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AdminStats, AdminUser, MatchProfile, Review, SessionItem } from '../api'
 import { api, ApiError, displayName } from '../api'
 import { Avatar, Chip, StatusBadge } from './ui'
@@ -29,6 +29,15 @@ export default function AdminPanel({ currentUserId, onMessage }: Props) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
   const [confirmCancelId, setConfirmCancelId] = useState<number | null>(null)
   const [busySessionId, setBusySessionId] = useState<number | null>(null)
+  const searchRef = useRef('')
+
+  const loadUsers = useCallback(async (q?: string) => {
+    try {
+      setUsers(await api.getAdminUsers(q || undefined))
+    } catch {
+      /* keep old list; error shown on full load */
+    }
+  }, [])
 
   const loadAll = useCallback(async () => {
     setLoading(true)
@@ -55,13 +64,21 @@ export default function AdminPanel({ currentUserId, onMessage }: Props) {
     loadAll()
   }, [loadAll])
 
+  // A new user can sign up while the panel is open — the list loaded at
+  // mount goes stale. Re-fetch the users list (and the stats, so the
+  // "Total users" card can't disagree with the Users tab count) every
+  // time the Users view is opened, so new signups always show.
+  useEffect(() => {
+    if (tab === 'users') {
+      loadUsers(searchRef.current)
+      api.getAdminStats().then(setStats).catch(() => undefined)
+    }
+  }, [tab, loadUsers])
+
   async function searchUsers(q: string) {
     setSearch(q)
-    try {
-      setUsers(await api.getAdminUsers(q || undefined))
-    } catch {
-      /* keep old list; error shown on full load */
-    }
+    searchRef.current = q
+    await loadUsers(q)
   }
 
   async function filterSessions(status: string) {
@@ -237,10 +254,12 @@ export default function AdminPanel({ currentUserId, onMessage }: Props) {
             </p>
           ) : (
             <div className="overflow-x-auto card">
-              <table className="w-full min-w-[720px] text-left text-sm">
+              <table className="w-full min-w-[880px] text-left text-sm">
                 <thead>
                   <tr className="border-b border-slate-800 bg-slate-800/70 text-xs uppercase tracking-wider text-slate-400">
+                    <th className="px-3 py-2.5 font-semibold">ID</th>
                     <th className="px-3 py-2.5 font-semibold">User</th>
+                    <th className="px-3 py-2.5 font-semibold">Joined</th>
                     <th className="px-3 py-2.5 font-semibold">Location</th>
                     <th className="px-3 py-2.5 font-semibold">Teaches</th>
                     <th className="px-3 py-2.5 font-semibold">Wants to learn</th>
@@ -252,8 +271,10 @@ export default function AdminPanel({ currentUserId, onMessage }: Props) {
                 <tbody>
                   {users.map((u) => {
                     const isSelf = u.user.id === currentUserId
+                    const isNew = Date.now() - new Date(u.date_joined).getTime() < 7 * 24 * 60 * 60 * 1000
                     return (
                       <tr key={u.user.id} className="border-b border-slate-800 last:border-0 hover:bg-slate-800/70">
+                        <td className="px-3 py-2.5 font-mono text-xs font-semibold text-slate-300">{u.user.id}</td>
                         <td className="px-3 py-2.5">
                           <div className="flex items-center gap-3">
                             <Avatar user={u.user} color={u.avatar_color} size="sm" />
@@ -265,6 +286,12 @@ export default function AdminPanel({ currentUserId, onMessage }: Props) {
                               <p className="truncate text-xs text-slate-400">@{u.user.username} · {u.user.email}</p>
                             </div>
                           </div>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <span className="text-slate-400">{new Date(u.date_joined).toLocaleDateString()}</span>
+                          {isNew && (
+                            <span className="ml-2 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-300 ring-1 ring-inset ring-emerald-500/30">New</span>
+                          )}
                         </td>
                         <td className="px-3 py-2.5 text-slate-400">{u.location || '—'}</td>
                         <td className="max-w-[180px] px-3 py-2.5">

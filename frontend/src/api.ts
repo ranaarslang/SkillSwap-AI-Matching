@@ -39,6 +39,10 @@ export interface Profile {
   verified_badge: boolean
   teach_skills: string[]
   learn_skills: string[]
+  /** Average of the user's received 1–5 star reviews; null when unrated. */
+  average_rating: number | null
+  /** How many reviews the user has received. */
+  review_count: number
 }
 
 export interface MatchProfile extends Profile {
@@ -225,6 +229,9 @@ export const api = {
     learn_skills?: string[]
   }) => request<Profile>('/profile/me/', { method: 'PUT', body: JSON.stringify(body) }),
   getProfile: (userId: number) => request<Profile>(`/profiles/${userId}/`),
+  /** Live directory search by name/username (min 2 chars, students only). */
+  searchUsers: (q: string) =>
+    request<Profile[]>(`/users/search/?q=${encodeURIComponent(q)}`),
   getMatches: () => request<MatchProfile[]>('/matches/'),
   getCommunity: () => request<MatchProfile[]>('/community/'),
   getSessions: () => request<SessionItem[]>('/sessions/'),

@@ -19,6 +19,8 @@ interface Props {
   onSent: (msg: ChatMessage) => void
   onRefreshConversations: () => void
   onSessionsChanged: () => void
+  /** Jump to the Feedback Hub with this completed session pre-selected. */
+  onRateSession: (session: SessionItem) => void
 }
 
 function otherPerson(s: SessionItem, me: number): User {
@@ -317,6 +319,9 @@ export default function ChatHub(props: Props) {
                     )}
                     {s.session_status === 'ACCEPTED' && (
                       <button onClick={() => setSessionStatus(s, 'COMPLETED')} className="btn-primary">Mark complete</button>
+                    )}
+                    {s.session_status === 'COMPLETED' && (
+                      <button onClick={() => props.onRateSession(s)} className="rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2">★ Rate {displayName(other).split(' ')[0]}</button>
                     )}
                     {s.session_status === 'PENDING' && !iAmPartnerTwo && (
                       <span className="text-xs text-slate-500 self-center">Waiting for {displayName(other)} to accept.</span>

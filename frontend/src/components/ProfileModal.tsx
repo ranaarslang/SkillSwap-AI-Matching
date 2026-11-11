@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react'
-import type { MatchProfile, Review } from '../api'
+import type { MatchProfile, Profile, Review } from '../api'
 import { api, displayName } from '../api'
-import { Avatar, Chip, IconClose, IconPin, ScoreBadge, TrustBadge, VerifiedBadge } from './ui'
+import { Avatar, Chip, IconClose, IconPin, RatingStars, ScoreBadge, TrustBadge, VerifiedBadge } from './ui'
+
+/** Match fields are optional: directory-search results are plain profiles. */
+type ViewableProfile = Profile &
+  Partial<Pick<MatchProfile, 'match_score' | 'location_bonus' | 'same_location' | 'can_teach_you' | 'you_can_teach_them'>>
 
 interface Props {
-  profile: MatchProfile
+  profile: ViewableProfile
   isMatch: boolean
   onClose: () => void
-  onMessage: (profile: MatchProfile) => void
+  onMessage: (profile: Profile) => void
   /** Admin profile views hide the match score — it is meaningless there. */
   hideScore?: boolean
 }
@@ -76,11 +80,16 @@ export default function ProfileModal({ profile, isMatch, onClose, onMessage, hid
                 <h2 className="text-xl font-bold tracking-tight">{displayName(profile.user)}</h2>
                 {profile.verified_badge && <VerifiedBadge />}
               </div>
-              <p className="text-sm text-indigo-200">@{profile.user.username}</p>
+              <p className="text-sm text-indigo-200">ID {profile.user.id} · @{profile.user.username}</p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 {!hideScore &&
-                  (isMatch ? <ScoreBadge score={profile.match_score} /> : <span className="rounded-full bg-white/15 px-2.5 py-1 text-xs font-semibold text-white">below 50% match</span>)}
+                  (isMatch && profile.match_score != null ? (
+                    <ScoreBadge score={profile.match_score} />
+                  ) : (
+                    <span className="rounded-full bg-white/15 px-2.5 py-1 text-xs font-semibold text-white">below 50% match</span>
+                  ))}
                 <TrustBadge score={profile.trust_score} />
+                <RatingStars average={profile.average_rating} count={profile.review_count} />
               </div>
             </div>
           </div>
@@ -91,7 +100,7 @@ export default function ProfileModal({ profile, isMatch, onClose, onMessage, hid
               </span>
             )}
             {profile.availability && <span>Available: {profile.availability}</span>}
-            {profile.same_location && profile.location_bonus > 0 && (
+            {profile.same_location && (profile.location_bonus ?? 0) > 0 && (
               <span>+{profile.location_bonus} same-city bonus</span>
             )}
           </div>
@@ -142,6 +151,11 @@ export default function ProfileModal({ profile, isMatch, onClose, onMessage, hid
           <section>
             <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
               Reviews {reviews ? `(${reviews.length})` : ''}
+              {profile.average_rating !== null && profile.review_count > 0 && (
+                <span className="ml-2 normal-case tracking-normal text-amber-600">
+                  ★ {profile.average_rating.toFixed(1)} average
+                </span>
+              )}
             </h3>
             {reviews === null ? (
               <p className="mt-1.5 text-sm text-slate-500">Loading reviews…</p>

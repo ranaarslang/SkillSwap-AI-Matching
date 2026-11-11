@@ -15,6 +15,7 @@ urlpatterns = [
     # Profiles
     path("profile/me/", views.profile_me, name="profile_me"),
     path("profiles/<int:user_id>/", views.profile_detail, name="profile_detail"),
+    path("users/search/", views.search_users, name="search_users"),
     # Matching / community
     path("matches/", views.matches, name="matches"),
     path("community/", views.community, name="community"),

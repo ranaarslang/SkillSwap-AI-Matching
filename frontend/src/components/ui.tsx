@@ -149,6 +149,30 @@ export function TrustBadge({ score }: { score: number }) {
   )
 }
 
+/** Average star rating from received reviews: ★★★★☆ + "4.5 (3)". */
+export function RatingStars({ average, count }: { average: number | null; count: number }) {
+  if (!count || average === null) {
+    return (
+      <span className="inline-flex items-center rounded-full bg-slate-100 text-slate-500 ring-1 ring-inset ring-slate-200 text-xs font-semibold px-2.5 py-1 shadow-sm" title="No ratings yet">
+        <span className="text-slate-400">☆</span>&nbsp;No ratings yet
+      </span>
+    )
+  }
+  const full = Math.round(average)
+  return (
+    <span
+      className="inline-flex items-center rounded-full bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200 text-xs font-semibold px-2.5 py-1 shadow-sm"
+      title={`Rated ${average.toFixed(1)} out of 5 from ${count} review${count === 1 ? '' : 's'}`}
+    >
+      <span className="tracking-tight text-amber-500">
+        {'★'.repeat(full)}
+        {'☆'.repeat(5 - full)}
+      </span>
+      &nbsp;{average.toFixed(1)} ({count})
+    </span>
+  )
+}
+
 export function VerifiedBadge() {
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-xs font-bold px-2.5 py-1 shadow-sm" title="Verified account">

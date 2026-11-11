@@ -610,6 +610,106 @@ sky) passing a glowing golden star between them. **Only the logo changed**
   password-reset emails, and any payment/money features (explicitly excluded
   by the spec).
 
+## Round 3 — rating visibility, new users in admin, find people by name (2026-11-11, user feedback)
+
+The user ordered three edits by voice note + text (2026-11-11 ~12:33 PKT):
+(1) a rating feature, (2) new users must show in the admin panel, (3) search
+any user by name and show their ID — for students AND admin. **No new rating
+model was invented:** the existing 1–5 star `IntegrityReview` (completed-
+session partners only, one per session per author, trust recalculates as
+`round(avg/5*100)`) is now surfaced everywhere. Matcher, threshold,
+branding, navbar, logo and admin theme are untouched.
+
+### 1. Rating, visible and easy
+- **Backend:** `ProfileSerializer` now exposes `average_rating` (one-decimal
+  average of received reviews, `null` when unrated) and `review_count`
+  (`serializers.py: rating_stats_for()` + a per-profile cache so the two
+  fields share one aggregate query). It flows to matches, community,
+  profile detail AND the admin users list (which serializes through it).
+- **UI:** new `RatingStars` component (`ui.tsx`) — `★★★★☆ 4.0 (1)` pill,
+  or a muted "No ratings yet" pill when unrated; average always shown with
+  one decimal (`toFixed(1)` — JS renders `4.0` as `4` otherwise).
+  Shown on match cards, community cards, directory cards, the profile
+  modal header (next to the trust badge) and the modal's Reviews heading
+  ("★ 4.0 average").
+- **Rate action:** completed sessions in ChatHub's "My sessions" now have a
+  **"★ Rate {first name}"** button that jumps to the Feedback Hub with that
+  session pre-selected (`preselectSessionId` prop on `FeedbackHub`). After a
+  successful submit the partner leaves the rateable list ("All caught up —
+  one review per session"); the server still enforces the rules (0/6 stars
+  → 400, duplicate → 400, non-completed session → 400).
+
+### 2. New users show in the admin panel
+- **Root cause:** the backend already returned ALL users
+  (`admin_users` ordered by username, no filter). The frontend loaded the
+  list once at panel mount, so a user who signed up while the panel was
+  open never appeared until a manual Refresh. Fix (`AdminPanel.tsx`):
+  the users list (and the stats, so "Total users" can't disagree with the
+  Users tab count) is re-fetched **every time the Users view opens**,
+  plus the existing manual Refresh button.
+- **Also added:** an **ID** column (numeric user id), a **Joined** column
+  (date_joined), and a **"New" badge** for accounts created in the last 7
+  days. The user-detail view header now reads `ID {id} · @{username} ·
+  {email}`.
+
+### 3. Find people by name + show the ID (students and admin)
+- **Backend:** new `GET /api/users/search/?q=` (`views.search_users`,
+  JWT auth) — first/last name or username `icontains`, min 2 chars (400
+  below), excludes the caller and staff accounts, capped at 20, returns
+  full `ProfileSerializer` payloads (id, username, display name, location,
+  teach/learn skills, trust score, average rating). 401 unauthenticated.
+- **Student app:** the navbar search already existed but only filtered the
+  matches/community lists loaded at login — a friend who signed up later
+  (or with no skill overlap) was unfindable there. `Dashboard.tsx` now
+  runs a debounced (300 ms) live directory search whenever the navbar query
+  has ≥2 characters and renders a **"Find people"** section (count badge,
+  compact cards with `ID {id} · @{username}`, location, skills, rating,
+  Message + View profile). Results open `ProfileModal` with the score
+  hidden (`hideScore`) and the ID shown; `ProfileModal`'s profile type was
+  widened to accept plain profiles (match fields optional).
+- **Admin side:** the users table and user-detail view show the numeric ID
+  (above); the existing admin `?q=` search is unchanged.
+
+### Verification (round 3, coordinator, 2026-11-11)
+
+- Backend: `manage.py check` clean; fresh-DB migrate + `seed_demo` clean.
+  API smoke script (`~/workspace/.scratch-skillswap-r3/verify-r3.py`,
+  local Daphne :8000): **34/35 passed** — the 1 "failure" is the test's
+  own wrong expectation (it looked for Sana in matches; she scores 24%
+  for Maya, so she is in community — verified directly: community Sana
+  `(24, 5.0, 1)`). Covered: rating fields on matches/community/profile/
+  admin payloads; search finds Leo (case-insensitive), community member
+  Jonah, and just-signed-up Zara immediately; search excludes self and
+  staff; 1-char → 400; unauthenticated → 401; admin list has all seeded
+  users + Zara with `date_joined`; non-admin → 403 on admin endpoints;
+  complete maya↔leo session → 4★ review → Leo avg 4.0, count 1, trust 80;
+  duplicate → 400; 0/6 stars → 400; review on PENDING → 400.
+- Frontend: `npm run build` passes (strict TS + Vite).
+- Visual verification: Playwright
+  (`~/workspace/.scratch-skillswap-r3/visual-r3.py`, vite preview :4173 +
+  local Daphne :8000, clean env, no proxy) — **26/26 passed** at desktop
+  1280×800 AND 390px phone width: Leo card `★★★★☆ 4.0 (1)`, unrated card
+  "No ratings yet", Find people finds Leo (`ID 3 · @leo`) and just-signed-
+  up Zara, profile modal shows `ID 3 · @leo` + `★ 4.0 average`, Rate
+  button pre-selects Leo in Feedback Hub, Priya 5★ submit shows the trust
+  update, admin list shows Zara with New badge + ID + Joined, Omar (signed
+  up mid-test) appears after a tab re-open with New badge, admin detail
+  shows Omar's ID, 0px horizontal overflow at 390px, no page errors
+  anywhere. Screenshots:
+  `~/workspace/.scratch-skillswap-r3/shots-r3/` (`01`–`12`).
+- Two test-harness notes (not app bugs): the service restart mid-round
+  wiped `/tmp` (scripts + Playwright venv + Daphne log gone) — round-3
+  working files now live in `~/workspace/.scratch-skillswap-r3/` which
+  survives restarts; and Django's SQLite AUTOINCREMENT never reuses a
+  deleted id, so test users' ids (Zara 10, Omar 11) are resolved live in
+  the scripts, never hardcoded.
+- **Not verified live:** the parent must live-verify the student side as
+  maya/demo1234 on https://skillswap-j5lg.onrender.com (Find people,
+  ratings, Rate button) and the admin side with the user's own admin
+  password (new-user list, ID/Joined/New). The live admin password is the
+  user's own and unknown here, so admin flows were verified locally only
+  with the seeded admin account.
+
 ## Files
 
 - [README.md](sandbox://workspace/skillswap-v2/README.md) — run instructions, demo logins, feature guide
