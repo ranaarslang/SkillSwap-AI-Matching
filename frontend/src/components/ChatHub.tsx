@@ -58,6 +58,19 @@ function ChatMessageBody({ m, mine }: { m: ChatMessage; mine: boolean }) {
           </p>
         </div>
       )}
+      {/* Round 3c: a message held by the privacy filter (number or link)
+          shows its approval state to the sender. The recipient never
+          receives pending or rejected messages. */}
+      {m.moderation_status === 'pending' && (
+        <p className={`text-[11px] font-semibold ${mine ? 'text-amber-200' : 'text-amber-600'}`}>
+          ⏳ Waiting for admin approval — it will be shared only if the admin approves it.
+        </p>
+      )}
+      {m.moderation_status === 'rejected' && (
+        <p className={`text-[11px] font-semibold ${mine ? 'text-red-200' : 'text-red-600'}`}>
+          🚫 Not approved by the admin — this message was not delivered.
+        </p>
+      )}
     </div>
   )
 }

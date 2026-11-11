@@ -9,3 +9,6 @@ frontend/dist/
 .venv/
 frontend/dist-local/
 media/
+
+# TypeScript incremental build info
+frontend/tsconfig.tsbuildinfo

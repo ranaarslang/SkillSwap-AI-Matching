@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MatchProfile, Profile } from '../api'
-import { api, displayName } from '../api'
+import { api, displayName, formatLocation } from '../api'
 import { Avatar, Chip, IconPin, RatingStars, ScoreRing, TrustBadge, VerifiedBadge } from './ui'
 
 interface Props {
@@ -18,7 +18,7 @@ interface Props {
 }
 
 function matchesQuery(p: MatchProfile, q: string): boolean {
-  const hay = [displayName(p.user), p.user.username, p.bio, p.location, ...p.teach_skills, ...p.learn_skills]
+  const hay = [displayName(p.user), p.user.username, p.bio, p.location, p.country, ...p.teach_skills, ...p.learn_skills]
     .join(' ')
     .toLowerCase()
   return hay.includes(q)
@@ -53,9 +53,9 @@ function MatchCard({
             {profile.verified_badge && <VerifiedBadge />}
           </div>
           <p className="truncate text-sm text-slate-500">@{profile.user.username}</p>
-          {profile.location && (
+          {formatLocation(profile) && (
             <p className="mt-0.5 inline-flex items-center gap-1 text-sm text-slate-500">
-              <IconPin className="h-3.5 w-3.5" /> {profile.location}
+              <IconPin className="h-3.5 w-3.5" /> {formatLocation(profile)}
             </p>
           )}
         </div>
@@ -138,9 +138,9 @@ function DirectoryCard({
             {profile.verified_badge && <VerifiedBadge />}
           </div>
           <p className="truncate text-sm text-slate-500">ID {profile.user.id} · @{profile.user.username}</p>
-          {profile.location && (
+          {formatLocation(profile) && (
             <p className="mt-0.5 inline-flex items-center gap-1 text-sm text-slate-500">
-              <IconPin className="h-3.5 w-3.5" /> {profile.location}
+              <IconPin className="h-3.5 w-3.5" /> {formatLocation(profile)}
             </p>
           )}
         </div>

@@ -16,6 +16,7 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .matcher import MATCH_THRESHOLD, CandidateSkills, get_matcher
+from .message_filter import flag_reasons
 from .models import (
     ALLOWED_ATTACHMENT_EXTENSIONS,
     CODE_LANGUAGES,
@@ -126,6 +127,10 @@ def signup(request):
     if errors:
         return Response(errors, status=status.HTTP_400_BAD_REQUEST)
 
+    # Round 3c: location is country + city, taken at signup when given.
+    country = (request.data.get("country") or "").strip()[:100]
+    location = (request.data.get("location") or "").strip()[:120]
+
     username = _unique_username(email)
     parts = full_name.split(None, 1)
     user = User.objects.create_user(
@@ -135,7 +140,13 @@ def signup(request):
         first_name=parts[0],
         last_name=parts[1] if len(parts) > 1 else "",
     )
-    Profile.objects.get_or_create(user=user)
+    profile, _ = Profile.objects.get_or_create(user=user)
+    if country:
+        profile.country = country
+    if location:
+        profile.location = location
+    if country or location:
+        profile.save(update_fields=["country", "location"])
     _create_skills(user, teach_skills, UserSkill.SkillType.TEACH)
     _create_skills(user, learn_skills, UserSkill.SkillType.LEARN)
     payload = _tokens_for(user)
@@ -451,20 +462,30 @@ def _message_payload(message, viewer):
         # Round 3b: code snippets + file attachments ride on the message.
         "code_language": message.code_language,
         "attachment": attachment_payload(att, viewer) if att else None,
+        # Round 3c: moderation — pending/rejected messages are only ever
+        # sent to their sender, never to the recipient.
+        "moderation_status": message.moderation_status,
+        "flag_reason": message.flag_reason,
     }
 
 
-def _broadcast_message(message):
-    """Push a saved message to both the recipient's and sender's WS groups.
+def _broadcast_message(message, only_sender=False):
+    """Push a saved message to the recipient's and sender's WS groups.
 
     The payload is built per viewer (the attachment download URL is signed
-    for that viewer), so each side gets its own copy.
+    for that viewer), so each side gets its own copy. Flagged (pending or
+    rejected) messages go to the sender ONLY — the recipient never sees
+    them until an admin approves.
     """
     channel_layer = get_channel_layer()
     if channel_layer is None:
         return
-    for viewer in (message.receiver, message.sender):
+    targets = [(message.sender, True)]
+    if not only_sender:
+        targets.append((message.receiver, False))
+    for viewer, is_mine in targets:
         payload = _message_payload(message, viewer)
+        payload["is_mine"] = is_mine
         async_to_sync(channel_layer.group_send)(
             f"user_{viewer.id}",
             {"type": "chat_message", "data": payload},
@@ -480,21 +501,34 @@ def conversations(request):
     ).order_by("-sent_at").select_related("sender", "receiver", "attachment")
     peers = {}
     for m in msgs:
+        # Round 3c: a pending/rejected message is visible only to its
+        # sender. For the recipient it must not even create a preview.
+        if (m.moderation_status != ChatMessage.ModerationStatus.APPROVED
+                and m.sender_id != me.id):
+            continue
         peer = m.receiver if m.sender_id == me.id else m.sender
         if peer.id not in peers:
             peers[peer.id] = {"peer": peer, "last": m}
     out = []
     for peer_id, info in peers.items():
         unread = ChatMessage.objects.filter(
-            sender_id=peer_id, receiver=me, is_read=False
+            sender_id=peer_id, receiver=me, is_read=False,
+            moderation_status=ChatMessage.ModerationStatus.APPROVED,
         ).count()
-        last_att = _attachment_of(info["last"])
+        last = info["last"]
+        last_att = _attachment_of(last)
+        if last.moderation_status == ChatMessage.ModerationStatus.PENDING:
+            preview = "⏳ Waiting for admin approval"
+        elif last.moderation_status == ChatMessage.ModerationStatus.REJECTED:
+            preview = "🚫 Message not approved"
+        else:
+            preview = last.message_body
         out.append({
             "peer": UserMiniSerializer(info["peer"]).data,
             "last_message": {
-                "body": info["last"].message_body,
-                "created_at": info["last"].sent_at.isoformat(),
-                "sender_id": info["last"].sender_id,
+                "body": preview,
+                "created_at": last.sent_at.isoformat(),
+                "sender_id": last.sender_id,
                 "attachment_name": last_att.original_filename if last_att else None,
             },
             "unread_count": unread,
@@ -518,12 +552,18 @@ def messages(request):
             peer = User.objects.get(id=peer_id)
         except (User.DoesNotExist, ValueError, TypeError):
             return Response({"detail": "Peer not found."}, status=404)
+        # Round 3c: pending/rejected messages are visible only to their
+        # sender — the recipient never sees them until an admin approves.
         qs = ChatMessage.objects.filter(
-            Q(sender=me, receiver=peer) | Q(sender=peer, receiver=me)
+            (Q(sender=me, receiver=peer) | Q(sender=peer, receiver=me))
+            & (Q(moderation_status=ChatMessage.ModerationStatus.APPROVED)
+               | Q(sender=me))
         ).order_by("sent_at")
-        # Mark their messages to me as read.
+        # Mark their messages to me as read (only approved ones can be
+        # unread — pending messages are invisible to the recipient).
         ChatMessage.objects.filter(
-            sender=peer, receiver=me, is_read=False
+            sender=peer, receiver=me, is_read=False,
+            moderation_status=ChatMessage.ModerationStatus.APPROVED,
         ).update(is_read=True)
         data = [
             _message_payload(m, me)
@@ -554,7 +594,17 @@ def messages(request):
         sender=me, receiver=recipient, message_body=body,
         code_language=code_language,
     )
-    _broadcast_message(message)
+    # Round 3c: a number or a link is HELD for admin approval — saved as
+    # pending and only the sender is told. Never rejected at the door,
+    # never delivered until approved.
+    reasons = flag_reasons(body)
+    if reasons:
+        message.moderation_status = ChatMessage.ModerationStatus.PENDING
+        message.flag_reason = ",".join(reasons)
+        message.save(update_fields=["moderation_status", "flag_reason"])
+        _broadcast_message(message, only_sender=True)
+    else:
+        _broadcast_message(message)
     return Response(
         _message_payload(message, me), status=status.HTTP_201_CREATED
     )
@@ -612,7 +662,16 @@ def upload_message(request):
         content_type=upload.content_type or "",
         size=upload.size,
     )
-    _broadcast_message(message)
+    # Round 3c: a flagged caption holds the whole message (file included)
+    # for admin approval, exactly like a flagged text message.
+    reasons = flag_reasons(body)
+    if reasons:
+        message.moderation_status = ChatMessage.ModerationStatus.PENDING
+        message.flag_reason = ",".join(reasons)
+        message.save(update_fields=["moderation_status", "flag_reason"])
+        _broadcast_message(message, only_sender=True)
+    else:
+        _broadcast_message(message)
     return Response(
         _message_payload(message, me), status=status.HTTP_201_CREATED
     )
@@ -804,6 +863,22 @@ def admin_toggle_user_active(request, user_id):
     return Response(_admin_user_data(user))
 
 
+@api_view(["POST"])
+@permission_classes([IsAdminUser])
+def admin_toggle_verified(request, user_id):
+    """Round 3c audit fix (SRS REQ-01.4): let an admin toggle a user's
+    profile validation badge — the badge existed in the model and was
+    displayed, but no admin control could change it."""
+    try:
+        user = User.objects.get(id=user_id)
+    except (User.DoesNotExist, ValueError, TypeError):
+        return Response({"detail": "User not found."}, status=404)
+    profile, _ = Profile.objects.get_or_create(user=user)
+    profile.verified_badge = not profile.verified_badge
+    profile.save(update_fields=["verified_badge"])
+    return Response(_admin_user_data(user))
+
+
 @api_view(["GET"])
 @permission_classes([IsAdminUser])
 def admin_sessions(request):
@@ -956,3 +1031,51 @@ def admin_cancel_session(request, session_id):
     session.session_status = SwapSession.Status.CANCELLED
     session.save(update_fields=["session_status"])
     return Response(SessionSerializer(session).data)
+
+
+@api_view(["GET"])
+@permission_classes([IsAdminUser])
+def admin_message_approvals(request):
+    """Round 3c: the Message Approvals queue — every chat message held
+    by the privacy filter (phone number or link), oldest first, with
+    sender, recipient, content and timestamp, for the admin to approve
+    or reject."""
+    pending = (
+        ChatMessage.objects.filter(
+            moderation_status=ChatMessage.ModerationStatus.PENDING
+        )
+        .select_related("sender", "receiver", "attachment")
+        .order_by("sent_at")
+    )
+    return Response([_message_payload(m, request.user) for m in pending])
+
+
+@api_view(["POST"])
+@permission_classes([IsAdminUser])
+def admin_approve_message(request, message_id):
+    """Approve a held message: it is delivered to the recipient (WS
+    broadcast + visible in their chat) and the sender's bubble updates
+    from 'waiting' to normal."""
+    try:
+        message = ChatMessage.objects.get(id=message_id)
+    except (ChatMessage.DoesNotExist, ValueError, TypeError):
+        return Response({"detail": "Message not found."}, status=404)
+    message.moderation_status = ChatMessage.ModerationStatus.APPROVED
+    message.save(update_fields=["moderation_status"])
+    _broadcast_message(message)
+    return Response(_message_payload(message, request.user))
+
+
+@api_view(["POST"])
+@permission_classes([IsAdminUser])
+def admin_reject_message(request, message_id):
+    """Reject a held message: it is never delivered. The sender is told
+    (their bubble shows 'rejected'); the recipient never sees it."""
+    try:
+        message = ChatMessage.objects.get(id=message_id)
+    except (ChatMessage.DoesNotExist, ValueError, TypeError):
+        return Response({"detail": "Message not found."}, status=404)
+    message.moderation_status = ChatMessage.ModerationStatus.REJECTED
+    message.save(update_fields=["moderation_status"])
+    _broadcast_message(message, only_sender=True)
+    return Response(_message_payload(message, request.user))

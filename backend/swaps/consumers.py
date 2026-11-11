@@ -47,6 +47,7 @@ from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.contrib.auth import get_user_model
 
+from .message_filter import flag_reasons
 from .models import CODE_LANGUAGES, ChatMessage
 from .serializers import UserMiniSerializer, attachment_payload
 from .views import _attachment_of
@@ -72,10 +73,19 @@ def _get_user(user_id):
 
 @database_sync_to_async
 def _save_message(sender, receiver, body, code_language=None):
-    return ChatMessage.objects.create(
+    # Round 3c: a number or a link is HELD for admin approval (same rule
+    # as the REST path) — saved as pending, never delivered until
+    # approved. Normal messages are created approved and flow instantly.
+    message = ChatMessage.objects.create(
         sender=sender, receiver=receiver, message_body=body,
         code_language=code_language,
     )
+    reasons = flag_reasons(body)
+    if reasons:
+        message.moderation_status = ChatMessage.ModerationStatus.PENDING
+        message.flag_reason = ",".join(reasons)
+        message.save(update_fields=["moderation_status", "flag_reason"])
+    return message
 
 
 @database_sync_to_async
@@ -97,6 +107,10 @@ def _message_payload_for(message, viewer):
         "is_mine": message.sender_id == viewer.id,
         "code_language": message.code_language,
         "attachment": attachment_payload(att, viewer) if att else None,
+        # Round 3c: moderation — pending/rejected messages are only ever
+        # sent to their sender, never to the recipient.
+        "moderation_status": message.moderation_status,
+        "flag_reason": message.flag_reason,
     }
 
 
@@ -176,7 +190,12 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             self.user, recipient, body, code_language
         )
         # To the recipient (is_mine=false) and echo to the sender (true).
-        for viewer, is_mine in ((recipient, False), (self.user, True)):
+        # Round 3c: a held (pending) message goes to the sender ONLY —
+        # the recipient never sees it until an admin approves it.
+        targets = ((self.user, True),)
+        if message.moderation_status == ChatMessage.ModerationStatus.APPROVED:
+            targets = ((recipient, False), (self.user, True))
+        for viewer, is_mine in targets:
             payload = await _message_payload_for(message, viewer)
             payload["is_mine"] = is_mine
             await self.channel_layer.group_send(

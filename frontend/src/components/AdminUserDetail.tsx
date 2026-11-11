@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { AdminUserDetail, MatchProfile, SessionItem } from '../api'
-import { api, ApiError, displayName, formatFileSize } from '../api'
+import { api, ApiError, displayName, formatFileSize, formatLocation } from '../api'
 import { Avatar, Chip, StatusBadge, TrustBadge, VerifiedBadge } from './ui'
 
 interface Props {
@@ -97,6 +97,18 @@ export default function AdminUserDetail({ userId, currentUserId, onBack, onMessa
     })
   }
 
+  // Round 3c audit fix (SRS REQ-01.4): the admin can toggle the profile
+  // validation badge, so account credibility can be marked clearly.
+  async function toggleVerified() {
+    if (!detail) return
+    await run('toggle-verified', async () => {
+      const updated = await api.adminToggleVerified(userId)
+      setNotice(
+        `${displayName(updated.user)}'s profile is now ${updated.verified_badge ? 'verified ✓' : 'not verified'}.`,
+      )
+    })
+  }
+
   async function cancelSession(s: SessionItem) {
     await run(`cancel-session-${s.id}`, async () => {
       await api.adminCancelSession(s.id)
@@ -172,7 +184,7 @@ export default function AdminUserDetail({ userId, currentUserId, onBack, onMessa
             <p className="text-sm text-slate-400">ID {detail.user.id} · @{detail.user.username} · {detail.user.email}</p>
             <p className="mt-1 text-sm text-slate-400">
               Joined {new Date(detail.date_joined).toLocaleDateString()}
-              {detail.location ? ` · 📍 ${detail.location}` : ''}
+              {formatLocation(detail) ? ` · 📍 ${formatLocation(detail)}` : ''}
               {detail.availability ? ` · Available: ${detail.availability}` : ''}
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -281,6 +293,23 @@ export default function AdminUserDetail({ userId, currentUserId, onBack, onMessa
               </button>
             )}
             {isSelf && <p className="mt-1 text-xs text-slate-400">You cannot deactivate your own account.</p>}
+          </div>
+          <div>
+            <span className="mb-1 block text-sm font-medium text-slate-300">Verification badge</span>
+            <button
+              onClick={toggleVerified}
+              disabled={busy === 'toggle-verified'}
+              className="btn-admin-secondary"
+            >
+              {busy === 'toggle-verified'
+                ? 'Saving…'
+                : detail.verified_badge
+                  ? 'Remove verification ✓'
+                  : 'Mark as verified'}
+            </button>
+            <p className="mt-1 text-xs text-slate-400">
+              {detail.verified_badge ? 'This profile shows the verified badge.' : 'This profile has no verified badge.'}
+            </p>
           </div>
         </div>
       </section>

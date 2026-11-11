@@ -865,6 +865,172 @@ needed beyond showing attachments in the admin message view.
   video call on real devices, because the media path cannot be
   verified in this sandbox (UDP blocked; see §1 above).
 
+## Round 3c — Back buttons, chat privacy filter (admin approval), world-country location, quality audit (2026-11-11, user feedback)
+
+Requirements frozen 2026-11-11 13:33 PKT (user: "sab chezen note kr lo ab
+ye bnao phir baki chezen bad me btao ga check kar k"). The full list of 14
+is in `ROUND3-REQUIREMENTS.md`, committed with this round for the viva.
+
+### 12. Back button on every sub-view
+- ProfileModal gained a visible "← Back" button top-left
+  (`aria-label="Back to dashboard"`). AdminUserDetail already had
+  "← Back to users"; AuthScreen already had "← Back" (signup step 2 →
+  step 1) and "← Back to student login" (admin login); ChatHub already
+  had a mobile-only "← Back" in the conversation header (`md:hidden`,
+  `aria-label="Back to conversations"`); desktop ChatHub is two-pane
+  (list always visible, no drill-down). The admin console sidebar also
+  has "← Back to student app". All verified in the UI at desktop +
+  390px: Back returns to the previous view without logging out or
+  losing state.
+
+### 13. Chat privacy filter — admin approval (REPLACES the hard-block 400)
+- Detection (`backend/swaps/message_filter.py`, new): `flag_reasons(body)`
+  → `['phone']` and/or `['link']`. Phone: `+92` + ≥7 more digits, or any
+  digit run of 10–15 digits allowing spaces/dashes/dots/parens. Link:
+  `https?://`, `www.`, bare domain + TLD list. Unit cases 14/14
+  (incl. "2 years experience", "session at 5pm", "Rs 5000",
+  "Rs 1,000,000 per year", "2026-11-11" all PASS; Pakistani mobile,
+  +92, youtube.com, bit.ly, www.example.com all flagged). Documented
+  trade-off: a bare 10+ digit run (e.g. a Unix timestamp literal in a
+  code snippet) IS flagged as phone-like — it is indistinguishable
+  from a phone number.
+- Model: `ChatMessage.moderation_status` (PENDING/APPROVED/REJECTED,
+  default APPROVED) + `flag_reason` — migration `0003`. Normal messages
+  flow instantly exactly as before.
+- REST `POST /api/messages/` + `POST /api/messages/upload/` (body
+  caption): flagged → saved PENDING, broadcast to sender ONLY; normal
+  → broadcast to both. `GET /api/messages/?peer=` history: pending /
+  rejected visible only to sender; mark-as-read only on approved.
+  `GET /api/conversations/`: incoming pending/rejected create no
+  preview (preview shows "⏳ Waiting for admin approval" / "🚫 Message
+  not approved" for the sender's own held messages); unread counts
+  only approved messages.
+- WS `consumers.py` `_handle_chat_message` + `_save_message`: same
+  filter; flagged → PENDING + echo to sender only. Payloads carry
+  `moderation_status` + `flag_reason`.
+- Admin endpoints (all `IsAdminUser`): `GET /api/admin/message-approvals/`
+  (pending list, oldest first), `POST /api/admin/message-approvals/<id>/approve/`
+  (→ APPROVED + broadcast to BOTH sides), `POST /api/admin/message-approvals/<id>/reject/`
+  (→ REJECTED + broadcast to sender only). Non-admin → 403.
+- Frontend: `ChatMessage` type gains `moderation_status` + `flag_reason`;
+  `ChatMessageBody` renders "⏳ Waiting for admin approval — it will be
+  shared only if the admin approves it." / "🚫 Not approved by the admin
+  — this message was not delivered."; App `onMessage` + `handleSent`
+  now REPLACE in place by message id (so an approval broadcast with the
+  same id flips the sender's bubble from "waiting" to normal instead of
+  being dropped as a duplicate); AdminPanel new **"Approvals (N)"** tab
+  (4th tab) with sender → recipient, body, "FLAGGED: PHONE/LINK" badge,
+  timestamp, Message #, Approve/Reject buttons + notice;
+  `api.getMessageApprovals/approveMessage/rejectMessage`. No client-side
+  regex duplication — the server response drives the waiting state.
+- Bug found + fixed during visual verification (Approvals tab
+  staleness): the queue was only re-fetched when the tab opened, so a
+  newly held message never appeared while the admin sat on the tab.
+  Fix: Refresh button on the Approvals section (mirroring Users) + 20s
+  auto-poll while the tab is open.
+
+### 14. Location — all world countries
+- `Profile.country` (CharField max 100, blank, default "") + `location`
+  stays the city/area free text — migration `0004`. `ProfileSerializer`
+  + `ProfileUpdateSerializer` + signup accept `country`; admin payload
+  gets it automatically via `ProfileSerializer`.
+- Frontend `src/countries.ts`: static ISO 3166 list (~195 + Taiwan /
+  Kosovo / Puerto Rico, no external API). `formatLocation(p)` helper
+  (`"City, Country"`, either part may be missing) used on match cards,
+  community cards, DirectoryCard, ProfileModal, AdminPanel users table,
+  AdminUserDetail header. Signup step 1: country `<select>` + city
+  input (both optional); ProfilePanel: country select + city input
+  (replacing the single location input). Dashboard `matchesQuery`
+  haystack now includes `p.country`. Backward compatible: existing demo
+  users have city-only `location` + empty `country` (verified via API +
+  UI). **+5 same-city bonus UNCHANGED** (compares `location` only);
+  matching works regardless of country. Verified: signup with United
+  States + New York → profile saves/shows "New York, United States",
+  directory search finds them, admin list shows them.
+
+### Bugs found + fixed during round 3c visual verification
+- **ProfilePanel stale initial state:** the dashboard heading renders
+  before `loadAll` finishes, so the panel could mount with
+  `profile=null` and its `useState` initializers captured empty
+  country/city forever (a pre-existing pattern affecting all profile
+  fields). Fix: `useEffect` in ProfilePanel re-syncs all form fields
+  whenever the `profile`/`user` prop lands (after a save, `onSaved`
+  updates the same prop to the saved values, so it resets to what was
+  saved).
+- **Match cards stale after review submit:** after submitting a review,
+  the dashboard cards kept showing the old rating until reload. Fix:
+  `FeedbackHub` gains `onReviewed` prop; App's new `refreshMatches`
+  (re-fetch `/matches/` + `/community/`) is passed as `onReviewed`, so
+  the new stars show immediately.
+
+### Verification (round 3c, coordinator, 2026-11-11)
+- Backend: `manage.py check` clean; migrations `0003` + `0004` apply
+  cleanly on a fresh DB. API/WS smoke
+  (`~/workspace/.scratch-skillswap-r3/verify-r3c.py`, live Daphne :8000
+  + in-process WS): **45/45 passed** (35 REST + 10 WS): filter units;
+  number → 201 pending/phone, recipient doesn't see it (history +
+  conversations preview), sender sees pending, admin queue lists it,
+  non-admin 403, approve → recipient sees it approved; link → pending,
+  reject → never delivered, sender sees rejected; ordinary numbers pass
+  instantly; file upload with flagged caption held then approved; WS
+  flagged number → sender echo only, in-process admin approve →
+  recipient receives it + sender bubble flips (same id), WS link →
+  reject, WS normal message instant. Regression re-runs on a fresh
+  seed: verify-r3.py 34/35 (the 1 failure is the known round-3 harness
+  artifact — Sana in matches), verify-r3b.py 23/23.
+- Frontend: `npm run build` passes (strict TS + Vite).
+- Visual verification: Playwright
+  (`~/workspace/.scratch-skillswap-r3/visual-r3c.py`, vite preview
+  :4173 + local Daphne :8000) — **28/28 passed** desktop 1280×800 +
+  390px: all four Back buttons, moderation flow end-to-end in the UI
+  (admin approves/rejects via the Approvals tab), rating submit via
+  Rate button, location signup UI, directory + admin display, 0px
+  overflow at 390px, zero page errors. Screenshots:
+  `~/workspace/.scratch-skillswap-r3/shots-r3c/` (`01`–`11`).
+
+## Quality audit (round 3c, 2026-11-11) — traceability + clean-clone run
+
+- `TRACEABILITY.md` (committed with this round): every SRS REQ-01–05 +
+  non-functional requirement + SDD §4–§6 item mapped to implemented +
+  verified, implemented with a documented deviation, or missing.
+- **One genuine gap found and fixed in the audit (SRS REQ-01.4):** the
+  admin could NOT toggle a user's profile validation badge — the badge
+  existed in the model and was displayed, but no admin control could
+  change it. Added `POST /api/admin/users/<id>/toggle-verified/`
+  (`IsAdminUser`) + a "Mark as verified / Remove verification ✓"
+  button in `AdminUserDetail.tsx` ("Fix an issue" section). Verified:
+  `~/workspace/.scratch-skillswap-r3/audit-r3c.py` **7/7 passed**
+  (toggle flips + restores, non-admin → 403, unknown user → 404,
+  cascade delete purges a deleted user's skill rows and messages).
+- **Clean-clone run:** fresh `git clone` of
+  `https://github.com/ranaarslang/SkillSwap-AI-Matching` → README
+  followed exactly (venv, pip install, `download_model.py --all`,
+  migrate, seed_demo, daphne :8000, `npm install`, `npm run dev`
+  :5173) → Playwright click-through of every feature (see
+  `~/workspace/.scratch-skillswap-r3/visual-clean-clone.py`) with zero
+  page/console errors at desktop 1280×800 and 390px.
+- **README updated in this round:** the "What each feature does"
+  section now covers the admin panel, video call, file/code sharing,
+  Find people, rating visibility, Message Approvals, country location
+  and Back buttons, and documents the seeded admin login.
+- **Open gaps (see TRACEABILITY.md §7):** video-call media not verified
+  end-to-end (sandbox blocks UDP — needs a live two-user test on real
+  devices); latency targets unmeasured (500 ms matching / 100 ms
+  message); browser coverage is Chromium only; WS reconnect not
+  exercised by actually dropping a socket; W3C markup not
+  validator-checked; Render free-tier limits (backend sleeps after
+  idle, uploaded files live on ephemeral disk); match scores jitter
+  ±1 between server starts (ONNX floating-point nondeterminism;
+  invariants always hold).
+- **Deviations confirmed in the audit:** SDD §5 "AI Computation Layer"
+  as an isolated microservice → in-process ONNX matcher (torch cannot
+  run on the 512 MB free tier); SDD §6.3.1 comma-separated skill text
+  boxes → SkillPicker catalog + free text; SDD §6.3.4 feedback submit
+  returning focus to the profile panel → stays on the Feedback Hub
+  with "Thank you" + "All caught up"; SDD UC2 session confirmation as
+  an embedded panel in the chat log → inline message in the scheduler
+  panel; REQ-03.1 per-pair rooms → per-user WS groups (same isolation).
+
 ## Files
 
 - [README.md](sandbox://workspace/skillswap-v2/README.md) — run instructions, demo logins, feature guide

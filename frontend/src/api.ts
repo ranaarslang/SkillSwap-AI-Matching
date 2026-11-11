@@ -31,6 +31,10 @@ export interface Profile {
   id: number
   user: User
   bio: string
+  /** Country picked from the full world list (round 3c); '' for older
+   * city-only profiles. */
+  country: string
+  /** City / area free text. */
   location: string
   availability: string
   portfolio_link: string
@@ -43,6 +47,12 @@ export interface Profile {
   average_rating: number | null
   /** How many reviews the user has received. */
   review_count: number
+}
+
+/** Display location as "City, Country" (either part may be missing —
+ * older profiles have a city only). */
+export function formatLocation(p: { location?: string; country?: string }): string {
+  return [p.location?.trim(), p.country?.trim()].filter(Boolean).join(', ')
 }
 
 export interface MatchProfile extends Profile {
@@ -99,6 +109,12 @@ export interface ChatMessage {
   /** Language of a code snippet, or null for a plain text message. */
   code_language: string | null
   attachment: AttachmentInfo | null
+  /** Round 3c moderation: 'approved' flows instantly; 'pending' is held
+   * for admin approval (visible to the sender only); 'rejected' was
+   * refused by the admin and never delivered. */
+  moderation_status: 'approved' | 'pending' | 'rejected'
+  /** Which filter matched ('phone', 'link' or 'phone,link'); '' when clean. */
+  flag_reason: string
 }
 
 /** Languages the code composer offers (must match the backend allowlist). */
@@ -250,7 +266,7 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
 }
 
 export const api = {
-  signup: (body: { email: string; password: string; full_name: string; teach_skills: string[]; learn_skills: string[] }) =>
+  signup: (body: { email: string; password: string; full_name: string; teach_skills: string[]; learn_skills: string[]; country?: string; location?: string }) =>
     request<{ access: string; refresh: string; user: User }>('/auth/signup/', { method: 'POST', body: JSON.stringify(body) }),
   login: (body: { email_or_username: string; password: string }) =>
     request<{ access: string; refresh: string; user: User }>('/auth/login/', { method: 'POST', body: JSON.stringify(body) }),
@@ -261,6 +277,7 @@ export const api = {
   updateMyProfile: (body: {
     full_name?: string
     bio?: string
+    country?: string
     location?: string
     availability?: string
     portfolio_link?: string
@@ -321,6 +338,9 @@ export const api = {
   getAdminUserDetail: (userId: number) => request<AdminUserDetail>(`/admin/users/${userId}/`),
   adminToggleUserActive: (userId: number) =>
     request<AdminUser>(`/admin/users/${userId}/toggle-active/`, { method: 'POST', body: JSON.stringify({}) }),
+  /** Round 3c audit fix (SRS REQ-01.4): toggle the profile validation badge. */
+  adminToggleVerified: (userId: number) =>
+    request<AdminUser>(`/admin/users/${userId}/toggle-verified/`, { method: 'POST', body: JSON.stringify({}) }),
   adminResetPassword: (userId: number, password?: string) =>
     request<{ detail: string; temporary_password: string; generated: boolean; advise: string }>(
       `/admin/users/${userId}/reset-password/`,
@@ -337,6 +357,13 @@ export const api = {
     request<{ detail: string; target_user_id: number; trust_score: number }>(`/admin/reviews/${reviewId}/`, { method: 'DELETE' }),
   adminDeleteMessage: (messageId: number) =>
     request<{ detail: string }>(`/admin/messages/${messageId}/`, { method: 'DELETE' }),
+  /** Round 3c: the Message Approvals queue — messages held by the
+   * privacy filter (phone number or link), waiting for the admin. */
+  getMessageApprovals: () => request<ChatMessage[]>('/admin/message-approvals/'),
+  approveMessage: (messageId: number) =>
+    request<ChatMessage>(`/admin/message-approvals/${messageId}/approve/`, { method: 'POST', body: JSON.stringify({}) }),
+  rejectMessage: (messageId: number) =>
+    request<ChatMessage>(`/admin/message-approvals/${messageId}/reject/`, { method: 'POST', body: JSON.stringify({}) }),
 }
 
 // ---- WebSocket live chat helper -------------------------------------------

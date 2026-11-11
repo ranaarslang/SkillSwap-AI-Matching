@@ -18,6 +18,12 @@ class Profile(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile"
     )
     bio = models.TextField(blank=True, default="")
+    # Location is country + city (round 3c): `country` is picked from the
+    # full world list in the frontend; `location` is the city/area free
+    # text. Older profiles have a city-only `location` and an empty
+    # country — they keep working, and the same-city bonus still compares
+    # `location` only.
+    country = models.CharField(max_length=100, blank=True, default="")
     location = models.CharField(max_length=120, blank=True, default="")
     availability = models.CharField(max_length=120, blank=True, default="")
     portfolio_link = models.URLField(blank=True, default="")
@@ -73,6 +79,22 @@ class ChatMessage(models.Model):
     # code snippet rendered in a monospace block. One of CODE_LANGUAGES
     # (validated in views), or None for a plain text message.
     code_language = models.CharField(max_length=32, blank=True, null=True)
+    # Additive (round 3c, chat privacy filter): a message that looks like
+    # it shares a phone number or a link is held for admin approval
+    # instead of being delivered. APPROVED is the default, so normal
+    # messages flow instantly exactly as before.
+    class ModerationStatus(models.TextChoices):
+        PENDING = "pending", "Pending admin approval"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected by admin"
+
+    moderation_status = models.CharField(
+        max_length=10,
+        choices=ModerationStatus.choices,
+        default=ModerationStatus.APPROVED,
+    )
+    # Which filter pattern matched, e.g. "phone", "link" or "phone,link".
+    flag_reason = models.CharField(max_length=20, blank=True, default="")
 
     class Meta:
         indexes = [models.Index(fields=["sender", "receiver", "sent_at"])]

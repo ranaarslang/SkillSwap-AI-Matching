@@ -12,13 +12,16 @@ interface Props {
   /** Session to pre-select (from a "Rate" button on a completed session). */
   preselectSessionId?: number | null
   onPreselectConsumed?: () => void
+  /** Called after a review is submitted, so the parent can refresh the
+   * match cards (the new stars must show without a page reload). */
+  onReviewed?: () => void
 }
 
 function otherPerson(s: SessionItem, me: number): User {
   return s.partner_one.id === me ? s.partner_two : s.partner_one
 }
 
-export default function FeedbackHub({ sessions, currentUserId, peerProfiles, loading, error, preselectSessionId, onPreselectConsumed }: Props) {
+export default function FeedbackHub({ sessions, currentUserId, peerProfiles, loading, error, preselectSessionId, onPreselectConsumed, onReviewed }: Props) {
   // Partners limited to completed-session partners only
   const completedPartners = useMemo(() => {
     const map = new Map<number, { partner: User; session: SessionItem }>()
@@ -72,6 +75,8 @@ export default function FeedbackHub({ sessions, currentUserId, peerProfiles, loa
       setSelectedId('')
       setComment('')
       setRating(0)
+      // Refresh the dashboard cards so the new stars show immediately.
+      onReviewed?.()
     } catch (err) {
       setSubmitError(err instanceof ApiError ? err.detail : 'Could not submit the review.')
     } finally {

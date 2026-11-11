@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AdminStats, AdminUser, MatchProfile, Review, SessionItem } from '../api'
-import { api, ApiError, displayName } from '../api'
+import type { AdminStats, AdminUser, ChatMessage, MatchProfile, Review, SessionItem } from '../api'
+import { api, ApiError, displayName, formatLocation } from '../api'
 import { Avatar, Chip, StatusBadge } from './ui'
 import AdminUserDetail from './AdminUserDetail'
 
@@ -9,7 +9,7 @@ interface Props {
   onMessage: (profile: MatchProfile) => void
 }
 
-type AdminTab = 'users' | 'sessions' | 'reviews'
+type AdminTab = 'users' | 'sessions' | 'reviews' | 'approvals'
 
 const SESSION_STATUSES = ['', 'PENDING', 'ACCEPTED', 'COMPLETED', 'CANCELLED']
 
@@ -20,6 +20,7 @@ export default function AdminPanel({ currentUserId, onMessage }: Props) {
   const [users, setUsers] = useState<AdminUser[]>([])
   const [sessions, setSessions] = useState<SessionItem[]>([])
   const [reviews, setReviews] = useState<Review[]>([])
+  const [approvals, setApprovals] = useState<ChatMessage[]>([])
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [loading, setLoading] = useState(true)
@@ -39,20 +40,30 @@ export default function AdminPanel({ currentUserId, onMessage }: Props) {
     }
   }, [])
 
+  const loadApprovals = useCallback(async () => {
+    try {
+      setApprovals(await api.getMessageApprovals())
+    } catch {
+      /* keep old list; error shown on full load */
+    }
+  }, [])
+
   const loadAll = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      const [s, u, sess, r] = await Promise.all([
+      const [s, u, sess, r, a] = await Promise.all([
         api.getAdminStats(),
         api.getAdminUsers(),
         api.getAdminSessions(),
         api.getAdminReviews(),
+        api.getMessageApprovals(),
       ])
       setStats(s)
       setUsers(u)
       setSessions(sess)
       setReviews(r)
+      setApprovals(a)
     } catch (err) {
       setError(err instanceof ApiError ? err.detail : 'Could not load admin data.')
     } finally {
@@ -68,12 +79,26 @@ export default function AdminPanel({ currentUserId, onMessage }: Props) {
   // mount goes stale. Re-fetch the users list (and the stats, so the
   // "Total users" card can't disagree with the Users tab count) every
   // time the Users view is opened, so new signups always show.
+  // The same staleness applies to the approvals queue: a held message
+  // can arrive while the panel is open.
   useEffect(() => {
     if (tab === 'users') {
       loadUsers(searchRef.current)
       api.getAdminStats().then(setStats).catch(() => undefined)
     }
-  }, [tab, loadUsers])
+    if (tab === 'approvals') {
+      loadApprovals()
+    }
+  }, [tab, loadUsers, loadApprovals])
+
+  // While the Approvals tab is open, a new held message can arrive at
+  // any time — poll the queue so the admin sees it without leaving the
+  // tab (the Refresh button below does the same on demand).
+  useEffect(() => {
+    if (tab !== 'approvals') return
+    const t = window.setInterval(loadApprovals, 20000)
+    return () => window.clearInterval(t)
+  }, [tab, loadApprovals])
 
   async function searchUsers(q: string) {
     setSearch(q)
@@ -146,6 +171,31 @@ export default function AdminPanel({ currentUserId, onMessage }: Props) {
     }
   }
 
+  // Round 3c: Message Approvals — a held chat message (phone number or
+  // link) is delivered only when the admin approves it, or never when
+  // rejected. The message leaves the queue either way.
+  const [busyApprovalId, setBusyApprovalId] = useState<number | null>(null)
+
+  async function decideApproval(m: ChatMessage, approve: boolean) {
+    setBusyApprovalId(m.id)
+    setNotice('')
+    setError('')
+    try {
+      if (approve) {
+        await api.approveMessage(m.id)
+        setNotice(`Message from ${displayName(m.sender)} to ${displayName(m.recipient)} approved and delivered.`)
+      } else {
+        await api.rejectMessage(m.id)
+        setNotice(`Message from ${displayName(m.sender)} to ${displayName(m.recipient)} rejected — it will never be delivered.`)
+      }
+      setApprovals((prev) => prev.filter((x) => x.id !== m.id))
+    } catch (err) {
+      setError(err instanceof ApiError ? err.detail : 'Could not decide the message.')
+    } finally {
+      setBusyApprovalId(null)
+    }
+  }
+
   const statCards = stats
     ? [
         { value: stats.total_users, label: 'Total users', sub: `${stats.total_students} students` },
@@ -213,6 +263,7 @@ export default function AdminPanel({ currentUserId, onMessage }: Props) {
             { id: 'users', label: `Users (${users.length})` },
             { id: 'sessions', label: `Sessions (${sessions.length})` },
             { id: 'reviews', label: `Reviews (${reviews.length})` },
+            { id: 'approvals', label: `Approvals (${approvals.length})` },
           ] as { id: AdminTab; label: string }[]
         ).map((t) => (
           <button
@@ -293,7 +344,7 @@ export default function AdminPanel({ currentUserId, onMessage }: Props) {
                             <span className="ml-2 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-300 ring-1 ring-inset ring-emerald-500/30">New</span>
                           )}
                         </td>
-                        <td className="px-3 py-2.5 text-slate-400">{u.location || '—'}</td>
+                        <td className="px-3 py-2.5 text-slate-400">{formatLocation(u) || '—'}</td>
                         <td className="max-w-[180px] px-3 py-2.5">
                           <div className="flex flex-wrap gap-1">
                             {u.teach_skills.length ? u.teach_skills.map((s) => <Chip key={s}>{s}</Chip>) : <span className="text-slate-500">—</span>}
@@ -448,6 +499,63 @@ export default function AdminPanel({ currentUserId, onMessage }: Props) {
                         Delete
                       </button>
                     )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+      {tab === 'approvals' && (
+        <section>
+          <div className="mb-3 flex flex-wrap items-center gap-3">
+            <p className="flex-1 text-sm text-slate-400">
+              Messages held by the chat privacy filter (a phone number or a link). The sender sees
+              them as "waiting for admin approval" and the recipient does not see them at all until
+              you approve. Approving delivers the message; rejecting means it is never delivered.
+            </p>
+            <button onClick={loadApprovals} className="btn-admin-secondary">
+              Refresh
+            </button>
+          </div>
+          {approvals.length === 0 ? (
+            <p className="card p-6 text-sm text-slate-400">No messages waiting for approval.</p>
+          ) : (
+            <ul className="space-y-3">
+              {approvals.map((m) => (
+                <li key={m.id} className="card p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-100">
+                        {displayName(m.sender)} → {displayName(m.recipient)}
+                        <span className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-300 ring-1 ring-inset ring-amber-500/30">
+                          {m.flag_reason ? `Flagged: ${m.flag_reason}` : 'Flagged'}
+                        </span>
+                      </p>
+                      <p className="mt-1 text-sm leading-relaxed text-slate-300 break-words">{m.body}</p>
+                      {m.attachment && (
+                        <p className="mt-1 text-xs text-slate-400">📎 {m.attachment.name} · {m.attachment.size} bytes</p>
+                      )}
+                      <p className="mt-1 text-xs text-slate-500">
+                        {new Date(m.created_at).toLocaleString()} · Message #{m.id}
+                      </p>
+                    </div>
+                    <span className="flex gap-2">
+                      <button
+                        onClick={() => decideApproval(m, true)}
+                        disabled={busyApprovalId === m.id}
+                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                      >
+                        {busyApprovalId === m.id ? 'Saving…' : 'Approve'}
+                      </button>
+                      <button
+                        onClick={() => decideApproval(m, false)}
+                        disabled={busyApprovalId === m.id}
+                        className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                      >
+                        Reject
+                      </button>
+                    </span>
                   </div>
                 </li>
               ))}

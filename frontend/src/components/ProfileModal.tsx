@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { MatchProfile, Profile, Review } from '../api'
-import { api, displayName } from '../api'
+import { api, displayName, formatLocation } from '../api'
 import { Avatar, Chip, IconClose, IconPin, RatingStars, ScoreBadge, TrustBadge, VerifiedBadge } from './ui'
 
 /** Match fields are optional: directory-search results are plain profiles. */
@@ -76,6 +76,16 @@ export default function ProfileModal({ profile, isMatch, onClose, onMessage, onC
           >
             <IconClose className="h-5 w-5" />
           </button>
+          {/* Round 3c: a visible Back button returns to the dashboard. */}
+          <div className="relative mb-3">
+            <button
+              onClick={onClose}
+              aria-label="Back to dashboard"
+              className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-semibold text-indigo-200 hover:bg-white/10 hover:text-white"
+            >
+              ← Back
+            </button>
+          </div>
           <div className="relative flex items-start gap-4">
             <Avatar user={profile.user} color={profile.avatar_color} size="lg" />
             <div className="min-w-0">
@@ -97,9 +107,9 @@ export default function ProfileModal({ profile, isMatch, onClose, onMessage, onC
             </div>
           </div>
           <div className="relative mt-4 flex flex-wrap gap-x-5 gap-y-1 text-sm text-indigo-100">
-            {profile.location && (
+            {formatLocation(profile) && (
               <span className="inline-flex items-center gap-1.5">
-                <IconPin className="h-4 w-4" /> {profile.location}
+                <IconPin className="h-4 w-4" /> {formatLocation(profile)}
               </span>
             )}
             {profile.availability && <span>Available: {profile.availability}</span>}

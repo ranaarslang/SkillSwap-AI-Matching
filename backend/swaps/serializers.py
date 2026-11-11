@@ -96,7 +96,8 @@ class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profile
         fields = (
-            "id", "user", "bio", "location", "availability", "portfolio_link",
+            "id", "user", "bio", "country", "location", "availability",
+            "portfolio_link",
             "avatar_color", "trust_score", "verified_badge",
             "teach_skills", "learn_skills",
             "average_rating", "review_count",
@@ -131,6 +132,7 @@ class ProfileSerializer(serializers.ModelSerializer):
 class ProfileUpdateSerializer(serializers.Serializer):
     full_name = serializers.CharField(required=False, allow_blank=True)
     bio = serializers.CharField(required=False, allow_blank=True)
+    country = serializers.CharField(required=False, allow_blank=True, max_length=100)
     location = serializers.CharField(required=False, allow_blank=True, max_length=120)
     availability = serializers.CharField(
         required=False, allow_blank=True, max_length=120
@@ -150,8 +152,8 @@ class ProfileUpdateSerializer(serializers.Serializer):
             user.first_name = parts[0]
             user.last_name = parts[1] if len(parts) > 1 else ""
             user.save(update_fields=["first_name", "last_name"])
-        for field in ("bio", "location", "availability", "portfolio_link",
-                      "avatar_color"):
+        for field in ("bio", "country", "location", "availability",
+                      "portfolio_link", "avatar_color"):
             if field in data:
                 setattr(profile, field, data[field])
         profile.save()

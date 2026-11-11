@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api, ApiError, ACCESS_KEY, REFRESH_KEY, USER_KEY } from '../api'
 import type { User } from '../api'
+import { COUNTRIES } from '../countries'
 import SkillPicker from './SkillPicker'
 import { IconCheck, IconShield, LogoMark } from './ui'
 
@@ -18,6 +19,8 @@ export default function AuthScreen({ onAuthed, variant }: { onAuthed: (user: Use
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState('')
+  const [country, setCountry] = useState('')
+  const [city, setCity] = useState('')
   const [teachSkills, setTeachSkills] = useState<string[]>([])
   const [learnSkills, setLearnSkills] = useState<string[]>([])
   const [teachError, setTeachError] = useState('')
@@ -62,7 +65,7 @@ export default function AuthScreen({ onAuthed, variant }: { onAuthed: (user: Use
       const res =
         mode === 'login'
           ? await api.login({ email_or_username: emailOrUsername, password })
-          : await api.signup({ email, password, full_name: fullName, teach_skills: teachSkills, learn_skills: learnSkills })
+          : await api.signup({ email, password, full_name: fullName, teach_skills: teachSkills, learn_skills: learnSkills, country: country || undefined, location: city || undefined })
       // Dedicated admin login: staff only. A student signing in here is
       // turned away with a clear message — they use the student login.
       if (isAdmin && !res.user.is_staff) {
@@ -233,6 +236,22 @@ export default function AuthScreen({ onAuthed, variant }: { onAuthed: (user: Use
                   <label className={labelCls} htmlFor="su-password">Password</label>
                   <input id="su-password" type="password" className={inputCls} value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} autoComplete="new-password" placeholder="At least 6 characters" />
                 </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={labelCls} htmlFor="su-country">Country</label>
+                    <select id="su-country" className={inputCls} value={country} onChange={(e) => setCountry(e.target.value)} autoComplete="country-name">
+                      <option value="">Select country…</option>
+                      {COUNTRIES.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelCls} htmlFor="su-city">City / area</label>
+                    <input id="su-city" className={inputCls} value={city} onChange={(e) => setCity(e.target.value)} autoComplete="address-level2" placeholder="e.g. New York" />
+                  </div>
+                </div>
+                <p className="-mt-2 text-xs text-slate-400">Country and city are optional — you can add them later on your profile. They help students near you find you.</p>
                 <button type="submit" className={isAdmin ? 'btn-admin w-full' : 'btn-primary w-full'}>
                   Continue to your skills →
                 </button>

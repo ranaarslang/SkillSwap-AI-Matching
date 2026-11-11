@@ -92,6 +92,16 @@ export default function App() {
     }
   }, [])
 
+  const refreshMatches = useCallback(async () => {
+    try {
+      const [m, c] = await Promise.all([api.getMatches(), api.getCommunity()])
+      setMatches(m)
+      setCommunity(c)
+    } catch {
+      /* keep old lists; error shown on full load */
+    }
+  }, [])
+
   const refreshSessions = useCallback(async () => {
     try {
       setSessions(await api.getSessions())
@@ -165,7 +175,16 @@ export default function App() {
     socket.onMessage = (msg) => {
       const peer = selectedPeerRef.current
       if (peer && (msg.sender.id === peer.id || msg.recipient.id === peer.id)) {
-        setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]))
+        // Replace in place when the id already exists: an admin approval
+        // re-broadcasts a held message with the SAME id, and the sender's
+        // bubble must flip from "waiting" to normal.
+        setMessages((prev) => {
+          const i = prev.findIndex((m) => m.id === msg.id)
+          if (i === -1) return [...prev, msg]
+          const next = [...prev]
+          next[i] = msg
+          return next
+        })
       }
       refreshConversations()
     }
@@ -228,7 +247,15 @@ export default function App() {
   // socket). Re-sending the body over the socket here used to save a
   // SECOND row and show the message twice — do not re-add a WS send.
   function handleSent(msg: ChatMessage) {
-    setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]))
+    // Replace in place when the id already exists (see onMessage above —
+    // an admin approval re-broadcasts a held message with the same id).
+    setMessages((prev) => {
+      const i = prev.findIndex((m) => m.id === msg.id)
+      if (i === -1) return [...prev, msg]
+      const next = [...prev]
+      next[i] = msg
+      return next
+    })
   }
 
   function handleSearchChange(v: string) {
@@ -485,6 +512,7 @@ export default function App() {
               error={loadError}
               preselectSessionId={feedbackPreselect}
               onPreselectConsumed={() => setFeedbackPreselect(null)}
+              onReviewed={refreshMatches}
             />
           )}
           {tab === 'admin' && user.is_staff && (

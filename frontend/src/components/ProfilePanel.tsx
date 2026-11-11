@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Profile, User } from '../api'
 import { api, ApiError } from '../api'
+import { COUNTRIES } from '../countries'
 import SkillPicker from './SkillPicker'
 
 const AVAILABILITY_OPTIONS = ['Weekdays', 'Weeknights', 'Weekends', 'Flexible']
@@ -16,7 +17,24 @@ export default function ProfilePanel({
 }) {
   const [fullName, setFullName] = useState(profile?.user.full_name || user.full_name || '')
   const [bio, setBio] = useState(profile?.bio || '')
+  const [country, setCountry] = useState(profile?.country || '')
   const [location, setLocation] = useState(profile?.location || '')
+
+  // The profile loads asynchronously after login/signup, and the panel
+  // can mount before it arrives (the dashboard heading renders first).
+  // Re-sync the form whenever the profile prop lands, so a saved
+  // country/city is never shown as empty. (After a save, onSaved updates
+  // the same prop to the saved values, so this resets to what was saved.)
+  useEffect(() => {
+    setFullName(profile?.user.full_name || user.full_name || '')
+    setBio(profile?.bio || '')
+    setCountry(profile?.country || '')
+    setLocation(profile?.location || '')
+    setTeach(profile?.teach_skills || [])
+    setLearn(profile?.learn_skills || [])
+    setAvailability(profile?.availability || 'Flexible')
+    setPortfolioLink(profile?.portfolio_link || '')
+  }, [profile, user])
   const [teach, setTeach] = useState<string[]>(profile?.teach_skills || [])
   const [learn, setLearn] = useState<string[]>(profile?.learn_skills || [])
   const [availability, setAvailability] = useState(profile?.availability || 'Flexible')
@@ -80,6 +98,7 @@ export default function ProfilePanel({
       const updated = await api.updateMyProfile({
         full_name: fullName,
         bio,
+        country,
         location,
         availability,
         portfolio_link: portfolioLink,
@@ -116,7 +135,16 @@ export default function ProfilePanel({
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="pf-location">Location (city / area)</label>
+            <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="pf-country">Country</label>
+            <select id="pf-country" className={inputCls} value={country} onChange={(e) => setCountry(e.target.value)} autoComplete="country-name">
+              <option value="">Select country…</option>
+              {COUNTRIES.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="pf-location">City / area</label>
             <input id="pf-location" className={inputCls} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Bahawalpur" />
           </div>
           <div>

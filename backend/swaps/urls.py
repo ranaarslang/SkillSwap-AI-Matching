@@ -43,6 +43,11 @@ urlpatterns = [
         name="admin_toggle_user_active",
     ),
     path(
+        "admin/users/<int:user_id>/toggle-verified/",
+        views.admin_toggle_verified,
+        name="admin_toggle_verified",
+    ),
+    path(
         "admin/users/<int:user_id>/reset-password/",
         views.admin_reset_password,
         name="admin_reset_password",
@@ -68,5 +73,21 @@ urlpatterns = [
         "admin/messages/<int:message_id>/",
         views.admin_delete_message,
         name="admin_delete_message",
+    ),
+    # Round 3c: Message Approvals queue (privacy filter).
+    path(
+        "admin/message-approvals/",
+        views.admin_message_approvals,
+        name="admin_message_approvals",
+    ),
+    path(
+        "admin/message-approvals/<int:message_id>/approve/",
+        views.admin_approve_message,
+        name="admin_approve_message",
+    ),
+    path(
+        "admin/message-approvals/<int:message_id>/reject/",
+        views.admin_reject_message,
+        name="admin_reject_message",
     ),
 ]
