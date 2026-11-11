@@ -8,9 +8,13 @@
 // the pending offer. Both sides exchange ICE candidates through the
 // socket. Either side can end; a disconnect mid-call notifies the peer
 // (server side, consumers.py).
-// STUN only (stun.l.google.com) — enough for the direct peer-to-peer
-// case; no TURN server is provisioned, so calls across restrictive NATs
-// may fail to connect (the UI then says the connection failed).
+// STUN (stun.l.google.com) + a free TURN relay (Open Relay Project,
+// openrelay.metered.ca — public demo credentials, no account). STUN alone
+// only finds a peer's public address; when both devices sit behind
+// restrictive NATs (mobile data, most home Wi-Fi) the direct UDP path
+// fails and the call never connects. TURN relays the encrypted media so
+// real-device calls connect across networks. If the TURN relay is ever
+// unreachable, the browser simply falls back to the direct path.
 import type { ChatSocket, User } from './api'
 
 export type CallDirection = 'outgoing' | 'incoming'
@@ -39,6 +43,13 @@ export interface CallState {
 }
 
 const STUN_URL = 'stun:stun.l.google.com:19302'
+const TURN_URLS = [
+  'turn:openrelay.metered.ca:80',
+  'turn:openrelay.metered.ca:443',
+  'turn:openrelay.metered.ca:443?transport=tcp',
+]
+const TURN_USERNAME = 'openrelayproject'
+const TURN_CREDENTIAL = 'openrelayproject'
 const RING_TIMEOUT_MS = 30_000
 const ENDED_NOTICE_MS = 2_500
 // If the peer connection never reaches 'connected' (e.g. a network that
@@ -108,7 +119,12 @@ export class CallManager {
   }
 
   private createPeerConnection(peerId: number, callId: string): RTCPeerConnection {
-    const pc = new RTCPeerConnection({ iceServers: [{ urls: STUN_URL }] })
+    const pc = new RTCPeerConnection({
+      iceServers: [
+        { urls: STUN_URL },
+        { urls: TURN_URLS, username: TURN_USERNAME, credential: TURN_CREDENTIAL },
+      ],
+    })
     this.pc = pc
     pc.ontrack = (ev) => {
       if (!this.call) return
