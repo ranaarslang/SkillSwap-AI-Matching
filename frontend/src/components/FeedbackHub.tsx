@@ -40,9 +40,32 @@ export default function FeedbackHub({ sessions, currentUserId, peerProfiles, loa
   const [submitError, setSubmitError] = useState('')
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<{ name: string; trust: number } | null>(null)
-  // Sessions already reviewed in this visit — one review per session per
-  // author (server-enforced); hide them so a duplicate can't be attempted.
+  // Sessions already reviewed — one review per session per author
+  // (server-enforced); hide them so a duplicate can't be attempted.
+  // Seeded from the server on mount (round-3c audit fix for REQ-05.1):
+  // the old visit-only state forgot reviews after a reload, so the hub
+  // re-listed already-reviewed partners and the submit then failed with
+  // a 400. The in-visit additions below still apply for instant feedback.
   const [reviewedSessionIds, setReviewedSessionIds] = useState<number[]>([])
+  useEffect(() => {
+    let cancelled = false
+    api.getMyReviews()
+      .then((mine) => {
+        if (cancelled) return
+        setReviewedSessionIds((prev) => [
+          ...new Set([
+            ...prev,
+            ...mine
+              .map((r) => r.session)
+              .filter((s): s is number => typeof s === 'number'),
+          ]),
+        ])
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [])
   const rateablePartners = completedPartners.filter((p) => !reviewedSessionIds.includes(p.session.id))
 
   // A "Rate" button on a completed session lands here with that session

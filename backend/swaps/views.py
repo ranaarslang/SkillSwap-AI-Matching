@@ -739,6 +739,13 @@ def reviews(request):
         qs = IntegrityReview.objects.all()
         if user_id:
             qs = qs.filter(target_user_id=user_id)
+        # Round 3c audit fix (REQ-05.1): the Feedback Hub must hide
+        # partners the user has ALREADY reviewed — even after a reload.
+        # `?author=me` lists only the current user's authored reviews so
+        # the UI can seed its reviewed-session list from the server
+        # instead of relying on in-visit state alone.
+        if request.query_params.get("author") == "me":
+            qs = qs.filter(author_user=me)
         qs = qs.order_by("-created_at")
         return Response(ReviewSerializer(qs, many=True).data)
 

@@ -1009,6 +1009,18 @@ is in `ROUND3-REQUIREMENTS.md`, committed with this round for the viva.
   :5173) → Playwright click-through of every feature (see
   `~/workspace/.scratch-skillswap-r3/visual-clean-clone.py`) with zero
   page/console errors at desktop 1280×800 and 390px.
+  - The first clean-clone pass (39/43) caught **one more real gap
+    (REQ-05.1)**: the Feedback Hub hid already-reviewed partners only
+    from in-visit state, so after navigating away and back it re-listed
+    them and the submit then failed with a 400. Fixed in the same round:
+    `GET /api/reviews/?author=me` (new filter) + the hub seeds its
+    reviewed-session list from the server on mount
+    (`api.getMyReviews()`). The remaining 3 failures in that pass were
+    test races (the dashboard heading renders before `loadAll`
+    finishes; the panel mounts before the profile lands) — the app
+    already showed the values a few seconds later, verified by a
+    dedicated probe (`probe-clean-clone.py`). The re-run after the fix
+    passed **43/43**.
 - **README updated in this round:** the "What each feature does"
   section now covers the admin panel, video call, file/code sharing,
   Find people, rating visibility, Message Approvals, country location

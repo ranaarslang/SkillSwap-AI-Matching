@@ -331,6 +331,9 @@ export const api = {
   createReview: (body: { session_id: number; rating_stars: number; feedback_text: string }) =>
     request<Review>('/reviews/', { method: 'POST', body: JSON.stringify(body) }),
   getReviews: (userId: number) => request<Review[]>(`/reviews/?user=${userId}`),
+  /** Reviews authored by the current user (used by the Feedback Hub to
+   * hide partners already reviewed — REQ-05.1, round-3c audit fix). */
+  getMyReviews: () => request<Review[]>('/reviews/?author=me'),
   // Admin (staff only — the API returns 403 for non-staff users)
   getAdminStats: () => request<AdminStats>('/admin/stats/'),
   getAdminUsers: (q?: string) =>
