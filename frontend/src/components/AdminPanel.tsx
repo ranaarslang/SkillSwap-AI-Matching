@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AdminStats, AdminUser, ChatMessage, MatchProfile, Review, SessionItem } from '../api'
+import type { AdminStats, AdminUser, ChatMessage, MatchProfile, Review, SessionItem, User } from '../api'
 import { api, ApiError, displayName, formatLocation } from '../api'
 import { Avatar, Chip, StatusBadge } from './ui'
 import AdminUserDetail from './AdminUserDetail'
@@ -26,13 +26,15 @@ interface Props {
   adminTheme: AdminTheme
   onAdminThemeChange: (t: AdminTheme) => void
   onMessage: (profile: MatchProfile) => void
+  /** Place an in-app video call to a user (App owns the CallManager). */
+  onCall: (user: User) => void
 }
 
 type AdminTab = 'users' | 'sessions' | 'reviews' | 'approvals' | 'reports' | 'skills' | 'analytics' | 'announcements' | 'audit' | 'export'
 
 const SESSION_STATUSES = ['', 'PENDING', 'ACCEPTED', 'COMPLETED', 'CANCELLED']
 
-export default function AdminPanel({ currentUserId, adminTheme, onAdminThemeChange, onMessage }: Props) {
+export default function AdminPanel({ currentUserId, adminTheme, onAdminThemeChange, onMessage, onCall }: Props) {
   const [tab, setTab] = useState<AdminTab>('users')
   const [detailUserId, setDetailUserId] = useState<number | null>(null)
   const [stats, setStats] = useState<AdminStats | null>(null)
@@ -278,6 +280,7 @@ export default function AdminPanel({ currentUserId, adminTheme, onAdminThemeChan
             loadAll()
           }}
           onMessage={onMessage}
+          onCall={onCall}
         />
       ) : (
         <>
@@ -416,6 +419,15 @@ export default function AdminPanel({ currentUserId, adminTheme, onAdminThemeChan
                               className="btn-admin-secondary px-3 py-1.5 text-xs"
                             >
                               View
+                            </button>
+                            <button
+                              onClick={() => onCall(u.user)}
+                              disabled={isSelf}
+                              title={isSelf ? 'You cannot call yourself.' : `Video call ${displayName(u.user)}`}
+                              aria-label={`Video call ${displayName(u.user)}`}
+                              className="btn-admin-secondary px-3 py-1.5 text-xs disabled:opacity-40"
+                            >
+                              📹 Call
                             </button>
                             <button
                               onClick={() => toggleActive(u)}

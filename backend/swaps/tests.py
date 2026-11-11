@@ -70,3 +70,57 @@ class MessageFilterTests(SimpleTestCase):
     def test_empty_body_is_clean(self):
         self.assertEqual(flag_reasons(""), [])
         self.assertEqual(flag_reasons(None), [])
+
+
+# Round 5: staff messages skip the moderation hold, and the mini
+# serializer carries is_staff (incoming-call "Admin" badge + admin
+# message notices on the frontend).
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+from rest_framework.test import APIClient
+
+from .serializers import UserMiniSerializer
+
+
+class StaffMessageBypassTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            username="admin", email="admin@example.com", password="demo1234",
+            is_staff=True, is_superuser=True,
+        )
+        self.maya = User.objects.create_user(
+            username="maya", email="maya@example.com", password="demo1234",
+        )
+        self.leo = User.objects.create_user(
+            username="leo", email="leo@example.com", password="demo1234",
+        )
+
+    def test_staff_flagged_message_is_delivered_immediately(self):
+        client = APIClient()
+        client.force_authenticate(user=self.admin)
+        res = client.post(
+            "/api/messages/",
+            {"recipient_id": self.maya.id,
+             "body": "Hi, please call me on 0300 1234567 or see example.com"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 201)
+        self.assertEqual(res.data["moderation_status"], "approved")
+        self.assertTrue(res.data["sender"]["is_staff"])
+
+    def test_student_flagged_message_is_still_held(self):
+        client = APIClient()
+        client.force_authenticate(user=self.maya)
+        res = client.post(
+            "/api/messages/",
+            {"recipient_id": self.leo.id, "body": "my number is 0300 1234567"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 201)
+        self.assertEqual(res.data["moderation_status"], "pending")
+        self.assertFalse(res.data["sender"]["is_staff"])
+
+    def test_mini_serializer_carries_is_staff(self):
+        self.assertTrue(UserMiniSerializer(self.admin).data["is_staff"])
+        self.assertFalse(UserMiniSerializer(self.maya).data["is_staff"])

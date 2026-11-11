@@ -506,6 +506,11 @@ export class ChatSocket {
   private ws: WebSocket | null = null
   private retries = 0
   private closedByUs = false
+  /** Call-signaling frames sent while the socket is down (reconnecting)
+   * are queued, not dropped — a lost offer/answer/ICE frame used to kill
+   * a call silently after Accept, with both sides stuck on
+   * "Connecting…". Flushed in order when the socket opens. */
+  private pendingCallFrames: string[] = []
   onMessage: ((msg: ChatMessage) => void) | null = null
   onStatus: ((s: WsStatus) => void) | null = null
   onReconnect: (() => void) | null = null
@@ -536,6 +541,16 @@ export class ChatSocket {
       this.retries = 0
       this.onStatus?.('live')
       if (wasReconnect) this.onReconnect?.()
+      // Flush queued call-signaling frames (see sendCall).
+      const queued = this.pendingCallFrames
+      this.pendingCallFrames = []
+      for (const frame of queued) {
+        try {
+          ws.send(frame)
+        } catch {
+          /* socket died again — the frame is dropped, not re-queued */
+        }
+      }
     }
     ws.onmessage = (ev) => {
       try {
@@ -585,10 +600,15 @@ export class ChatSocket {
     }
   }
 
-  /** Send one call-signaling frame (call.invite / call.offer / …). */
+  /** Send one call-signaling frame (call.invite / call.offer / …).
+   * If the socket is down, queue it for the reconnect instead of
+   * silently dropping it — a dropped offer/answer is a dead call. */
   sendCall(type: string, payload: Record<string, unknown>) {
+    const frame = JSON.stringify({ type, ...payload })
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type, ...payload }))
+      this.ws.send(frame)
+    } else if (this.pendingCallFrames.length < 200) {
+      this.pendingCallFrames.push(frame)
     }
   }
 
@@ -598,6 +618,7 @@ export class ChatSocket {
 
   close() {
     this.closedByUs = true
+    this.pendingCallFrames = []
     this.ws?.close()
     this.ws = null
   }

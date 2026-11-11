@@ -73,15 +73,18 @@ def _get_user(user_id):
 
 @database_sync_to_async
 def _save_message(sender, receiver, body, code_language=None):
-    # Round 3c: a number or a link is HELD for admin approval (same rule
-    # as the REST path) — saved as pending, never delivered until
-    # approved. Normal messages are created approved and flow instantly.
+    # Round 3c: a number or a link is HELD for admin approval — saved as
+    # pending and only the sender is told. Never rejected at the door,
+    # never delivered until approved. Normal messages are created
+    # approved and flow instantly. Round 5: staff messages skip the
+    # hold — the admin IS the moderator, so an admin message to a student
+    # (e.g. from the user record) must reach them immediately.
     message = ChatMessage.objects.create(
         sender=sender, receiver=receiver, message_body=body,
         code_language=code_language,
     )
     reasons = flag_reasons(body)
-    if reasons:
+    if reasons and not sender.is_staff:
         message.moderation_status = ChatMessage.ModerationStatus.PENDING
         message.flag_reason = ",".join(reasons)
         message.save(update_fields=["moderation_status", "flag_reason"])

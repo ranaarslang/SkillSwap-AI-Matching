@@ -47,15 +47,89 @@ const TURN_URLS = [
   'turn:openrelay.metered.ca:80',
   'turn:openrelay.metered.ca:443',
   'turn:openrelay.metered.ca:443?transport=tcp',
+  'turn:openrelay.metered.ca:3478',
 ]
+// Second free TURN provider (no signup, public demo credentials): if the
+// Open Relay service is ever down or overloaded, the browser tries this
+// one too. A dead entry costs nothing — it simply yields no candidates.
+const TURN_FALLBACK_URL = 'turn:turn.anyfirewall.com:443?transport=tcp'
+const TURN_FALLBACK_USERNAME = 'webrtc'
+const TURN_FALLBACK_CREDENTIAL = 'webrtc'
 const TURN_USERNAME = 'openrelayproject'
 const TURN_CREDENTIAL = 'openrelayproject'
 const RING_TIMEOUT_MS = 30_000
 const ENDED_NOTICE_MS = 2_500
 // If the peer connection never reaches 'connected' (e.g. a network that
 // blocks the UDP that WebRTC ICE needs), fail loudly instead of hanging
-// on "Connecting…" forever.
-const CONNECT_TIMEOUT_MS = 20_000
+// on "Connecting…" forever. 45s, not 20s: on a phone the camera
+// permission prompt + a slow TURN allocate can eat 20s before ICE even
+// starts checking pairs.
+const CONNECT_TIMEOUT_MS = 45_000
+
+/** Simple two-tone phone ring via Web Audio — no audio file needed.
+ * Starts on an incoming call (and a softer ringback while dialling);
+ * stops the moment the call is answered, declined, connected or ended.
+ * Every step is guarded: audio must never break a call. A browser may
+ * keep the context suspended until the user has interacted with the
+ * page — resume() is best-effort and a failure just means silence. */
+class Ringtone {
+  private ctx: AudioContext | null = null
+  private osc: OscillatorNode | null = null
+  private gain: GainNode | null = null
+  private timer: ReturnType<typeof setInterval> | null = null
+
+  start(kind: 'incoming' | 'ringback') {
+    try {
+      this.stop()
+      const AC =
+        window.AudioContext ??
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+      if (!AC) return
+      const ctx = new AC()
+      this.ctx = ctx
+      void ctx.resume().catch(() => {})
+      this.osc = ctx.createOscillator()
+      this.gain = ctx.createGain()
+      this.osc.type = 'sine'
+      this.osc.frequency.value = kind === 'incoming' ? 880 : 660
+      this.gain.gain.value = 0
+      this.osc.connect(this.gain)
+      this.gain.connect(ctx.destination)
+      this.osc.start()
+      // Ring pattern on a 250ms tick: two short bursts, then a pause
+      // (2.5s cycle). Ringback is quieter than the incoming ring.
+      const volume = kind === 'incoming' ? 0.08 : 0.035
+      let step = 0
+      this.timer = setInterval(() => {
+        if (!this.gain || !this.ctx) return
+        step += 1
+        const phase = step % 10
+        const target = phase === 0 || phase === 1 || phase === 3 || phase === 4 ? volume : 0
+        this.gain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.03)
+      }, 250)
+    } catch {
+      /* audio unavailable — the call still works, just silently */
+    }
+  }
+
+  stop() {
+    if (this.timer) {
+      clearInterval(this.timer)
+      this.timer = null
+    }
+    try {
+      this.osc?.stop()
+    } catch {
+      /* already stopped */
+    }
+    this.osc = null
+    this.gain = null
+    if (this.ctx) {
+      void this.ctx.close().catch(() => {})
+      this.ctx = null
+    }
+  }
+}
 
 function newCallId(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
@@ -79,6 +153,44 @@ export class CallManager {
   private ringTimer: ReturnType<typeof setTimeout> | null = null
   private endTimer: ReturnType<typeof setTimeout> | null = null
   private connectTimer: ReturnType<typeof setTimeout> | null = null
+  private ringtone = new Ringtone()
+  /** Resolved once the callee's local media is attached (or the attempt
+   * is over). The answer must wait for it — answering before the tracks
+   * exist sends a receive-only answer and the callee's media is never
+   * negotiated (no renegotiation handler exists). */
+  private mediaReady: Promise<void> | null = null
+  private mediaReadyResolve: (() => void) | null = null
+  /** ICE diagnostics for a failed call: what the browser actually
+   * gathered and received, so the failure notice can say WHY instead of
+   * only "Connection failed". Reset per peer connection. */
+  private iceStats = {
+    host: 0,
+    srflx: 0,
+    relay: 0,
+    gatheringComplete: false,
+    remoteCandidates: 0,
+    remoteDescriptionSet: false,
+  }
+
+  /** Why this call failed, in plain words — built from the ICE stats
+   * gathered so far. Used by the connect timeout and by the peer
+   * connection's 'failed' state. */
+  private diagnoseFailure(): string {
+    const s = this.iceStats
+    if (!s.remoteDescriptionSet) {
+      return 'Connection failed — the call setup never completed (the offer/answer was lost). Please try again.'
+    }
+    if (s.host + s.srflx + s.relay === 0) {
+      return 'Connection failed — no network path was found at all. Check your connection and try again.'
+    }
+    if (s.relay === 0) {
+      return 'Connection failed — the relay server (TURN) could not be reached and no direct path worked. Try again on a different network.'
+    }
+    if (s.remoteCandidates === 0) {
+      return 'Connection failed — the other side sent no network details. Please try again.'
+    }
+    return 'Connection failed — no direct or relayed path worked between the two devices. Try again on a different network.'
+  }
 
   constructor(socketRef: SocketRef, me: User) {
     this.socketRef = socketRef
@@ -99,13 +211,14 @@ export class CallManager {
       this.connectTimer = setTimeout(() => {
         const current = this.call
         if (current && current.callId === callId && current.status === 'connecting') {
-          this.endCall('Connection failed — check your network and try again.')
+          this.endCall(this.diagnoseFailure())
         }
       }, CONNECT_TIMEOUT_MS)
     } else if (this.connectTimer) {
       clearTimeout(this.connectTimer)
       this.connectTimer = null
     }
+    if (status === 'connected') this.ringtone.stop()
     this.emit()
   }
 
@@ -123,9 +236,11 @@ export class CallManager {
       iceServers: [
         { urls: STUN_URL },
         { urls: TURN_URLS, username: TURN_USERNAME, credential: TURN_CREDENTIAL },
+        { urls: TURN_FALLBACK_URL, username: TURN_FALLBACK_USERNAME, credential: TURN_FALLBACK_CREDENTIAL },
       ],
     })
     this.pc = pc
+    this.iceStats = { host: 0, srflx: 0, relay: 0, gatheringComplete: false, remoteCandidates: 0, remoteDescriptionSet: false }
     pc.ontrack = (ev) => {
       if (!this.call) return
       this.call = { ...this.call, remoteStream: ev.streams[0] ?? null }
@@ -133,6 +248,14 @@ export class CallManager {
     }
     pc.onicecandidate = (ev) => {
       if (ev.candidate) {
+        // candidate string: "candidate:<foundation> <comp> <proto> ...
+        // typ <host|srflx|relay> ..." — count the type for diagnosis.
+        const parts = ev.candidate.candidate.split(' ')
+        const typIdx = parts.indexOf('typ')
+        const typ = typIdx >= 0 ? parts[typIdx + 1] : ''
+        if (typ === 'host') this.iceStats.host += 1
+        else if (typ === 'srflx') this.iceStats.srflx += 1
+        else if (typ === 'relay') this.iceStats.relay += 1
         this.socketRef.current?.sendCall('call.ice', {
           to_user_id: peerId,
           call_id: callId,
@@ -140,10 +263,13 @@ export class CallManager {
         })
       }
     }
+    pc.onicegatheringstatechange = () => {
+      if (pc.iceGatheringState === 'complete') this.iceStats.gatheringComplete = true
+    }
     pc.onconnectionstatechange = () => {
       if (!this.call) return
       if (pc.connectionState === 'connected') this.setStatus('connected')
-      else if (pc.connectionState === 'failed') this.endCall('Connection failed — the call could not connect.')
+      else if (pc.connectionState === 'failed') this.endCall(this.diagnoseFailure())
     }
     return pc
   }
@@ -236,6 +362,7 @@ export class CallManager {
     await this.attachLocalMedia(pc)
     if (!this.call || this.call.callId !== callId) return
     this.socketRef.current?.sendCall('call.invite', { to_user_id: peer.id, call_id: callId })
+    this.ringtone.start('ringback')
     this.ringTimer = setTimeout(() => {
       if (this.call?.callId === callId && this.call.status === 'ringing') {
         this.endCall(`No answer — ${peer.full_name || peer.username} may be offline.`)
@@ -247,27 +374,47 @@ export class CallManager {
   async acceptCall() {
     const call = this.call
     if (!call || call.status !== 'incoming') return
+    this.ringtone.stop()
     // Tell the caller we accepted — they create the offer next. The offer
     // then arrives via handleEvent and is applied there (or here, if it
-    // somehow arrived first).
+    // somehow arrived first). The answer waits for local media: answering
+    // before the camera/mic tracks exist sends a receive-only answer and
+    // the callee's media is never negotiated.
+    this.mediaReady = new Promise<void>((resolve) => {
+      this.mediaReadyResolve = resolve
+    })
     this.socketRef.current?.sendCall('call.accept', { call_id: call.callId })
     this.setStatus('connecting')
     const pc = this.createPeerConnection(call.peer.id, call.callId)
     // Round 3f: a failed camera/mic no longer ends the call — the answer
     // still goes out and screen share stays available.
     await this.attachLocalMedia(pc)
+    if (this.mediaReadyResolve) {
+      this.mediaReadyResolve()
+      this.mediaReadyResolve = null
+    }
     if (!this.call || this.call.callId !== call.callId) return
     await this.applyOfferAndAnswer()
   }
 
-  /** Apply the pending offer (if any) and send back an answer. */
+  /** Apply the pending offer (if any) and send back an answer. Waits for
+   * local media first, so the answer carries the caller's audio/video
+   * tracks instead of a receive-only placeholder. The offer is read
+   * AFTER the wait: this runs from two places (the offer handler and
+   * acceptCall) and both can park on the same wait — whoever resumes
+   * first consumes the offer, the other must see it gone and return
+   * instead of answering twice (a second setRemoteDescription throws
+   * and kills the call). */
   private async applyOfferAndAnswer() {
     const call = this.call
+    if (!call || !this.pc) return
+    if (this.mediaReady) await this.mediaReady
     const sdp = this.pendingOffer
-    if (!call || !this.pc || !sdp) return
+    if (!this.call || !this.pc || !sdp || this.call.callId !== call.callId) return
     this.pendingOffer = null
     try {
       await this.pc.setRemoteDescription(new RTCSessionDescription(sdp))
+      this.iceStats.remoteDescriptionSet = true
       await this.flushCandidates()
       const answer = await this.pc.createAnswer()
       await this.pc.setLocalDescription(answer)
@@ -285,6 +432,7 @@ export class CallManager {
   declineCall() {
     const call = this.call
     if (!call || call.status !== 'incoming') return
+    this.ringtone.stop()
     this.socketRef.current?.sendCall('call.decline', { call_id: call.callId })
     this.cleanup('Call declined.')
   }
@@ -407,6 +555,13 @@ export class CallManager {
 
   private cleanup(notice: string) {
     this.clearTimers()
+    this.ringtone.stop()
+    // Unblock any answer waiting on local media — the call is over.
+    if (this.mediaReadyResolve) {
+      this.mediaReadyResolve()
+      this.mediaReadyResolve = null
+    }
+    this.mediaReady = null
     const callId = this.call?.callId
     if (this.pc) {
       try {
@@ -470,6 +625,7 @@ export class CallManager {
       this.pendingOffer = null
       this.pendingCandidates = []
       this.emit()
+      this.ringtone.start('incoming')
       return
     }
 
@@ -478,6 +634,7 @@ export class CallManager {
 
     if (type === 'call.accepted') {
       if (call.direction !== 'outgoing' || call.status !== 'ringing' || !this.pc) return
+      this.ringtone.stop()
       if (this.ringTimer) {
         clearTimeout(this.ringTimer)
         this.ringTimer = null
@@ -504,6 +661,7 @@ export class CallManager {
       if (!sdp || !this.pc) return
       try {
         await this.pc.setRemoteDescription(new RTCSessionDescription(sdp))
+        this.iceStats.remoteDescriptionSet = true
         await this.flushCandidates()
       } catch {
         /* duplicate answer — ignore */
@@ -511,6 +669,7 @@ export class CallManager {
     } else if (type === 'call.ice') {
       const candidate = ev.candidate as RTCIceCandidateInit | undefined
       if (!candidate) return
+      this.iceStats.remoteCandidates += 1
       if (this.pc && this.pc.remoteDescription) {
         try {
           await this.pc.addIceCandidate(new RTCIceCandidate(candidate))

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { AdminUserDetail, MatchProfile, SessionItem } from '../api'
+import type { AdminUserDetail, MatchProfile, SessionItem, User } from '../api'
 import { api, ApiError, displayName, formatFileSize, formatLocation } from '../api'
 import { Avatar, Chip, StatusBadge, TrustBadge, VerifiedBadge } from './ui'
 
@@ -8,6 +8,8 @@ interface Props {
   currentUserId: number
   onBack: () => void
   onMessage: (profile: MatchProfile) => void
+  /** Place an in-app video call to this user (App owns the CallManager). */
+  onCall: (user: User) => void
 }
 
 /**
@@ -16,7 +18,7 @@ interface Props {
  * sessions (with cancel), reviews received/given, recent messages (with
  * delete), password reset, trust override, activate/deactivate.
  */
-export default function AdminUserDetail({ userId, currentUserId, onBack, onMessage }: Props) {
+export default function AdminUserDetail({ userId, currentUserId, onBack, onMessage, onCall }: Props) {
   const [detail, setDetail] = useState<AdminUserDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -26,6 +28,8 @@ export default function AdminUserDetail({ userId, currentUserId, onBack, onMessa
   const [trustInput, setTrustInput] = useState('')
   const [busy, setBusy] = useState('')
   const [confirmAction, setConfirmAction] = useState<string | null>(null)
+  const [messageText, setMessageText] = useState('')
+  const [sendingMessage, setSendingMessage] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -123,6 +127,32 @@ export default function AdminUserDetail({ userId, currentUserId, onBack, onMessa
     })
   }
 
+  // Round 5: message this user directly from the record — the student
+  // gets a prominent banner with the text and an "Open chat" button.
+  // Staff messages skip the moderation hold (backend), so it is
+  // delivered immediately.
+  async function sendAdminMessage() {
+    const body = messageText.trim()
+    if (!body || !detail || sendingMessage) return
+    setSendingMessage(true)
+    setError('')
+    setNotice('')
+    try {
+      const sent = await api.sendMessage({ recipient_id: userId, body })
+      setMessageText('')
+      setNotice(
+        sent.moderation_status === 'pending'
+          ? `Message sent to ${displayName(detail.user)} — it is waiting for approval.`
+          : `Message sent to ${displayName(detail.user)}. They will see a banner with it.`,
+      )
+      await load()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.detail : 'Could not send the message.')
+    } finally {
+      setSendingMessage(false)
+    }
+  }
+
   function toMatchProfile(d: AdminUserDetail): MatchProfile {
     return {
       ...d,
@@ -194,12 +224,23 @@ export default function AdminUserDetail({ userId, currentUserId, onBack, onMessa
               </span>
             </div>
           </div>
-          <button
-            onClick={() => onMessage(toMatchProfile(detail))}
-            className="btn-admin"
-          >
-            Message
-          </button>
+          <span className="flex gap-2">
+            <button
+              onClick={() => onMessage(toMatchProfile(detail))}
+              className="btn-admin"
+            >
+              Message
+            </button>
+            <button
+              onClick={() => onCall(detail.user)}
+              disabled={isSelf}
+              title={isSelf ? 'You cannot call yourself.' : `Video call ${displayName(detail.user)}`}
+              aria-label={`Video call ${displayName(detail.user)}`}
+              className="btn-admin disabled:opacity-40"
+            >
+              📹 Video call
+            </button>
+          </span>
         </div>
         {detail.bio && <p className="mt-4 text-sm leading-relaxed text-[var(--adm-text-dim)]">{detail.bio}</p>}
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -221,6 +262,36 @@ export default function AdminUserDetail({ userId, currentUserId, onBack, onMessa
             View portfolio ↗
           </a>
         )}
+      </section>
+
+      {/* Message this user — the student gets a full-width banner with
+          the text and an "Open chat" button, wherever they are in the
+          app. Staff messages skip the moderation hold. */}
+      <section className="card p-5 sm:p-6">
+        <h3 className="text-sm font-bold uppercase tracking-wider text-[var(--adm-text-dim)]">Message this user</h3>
+        <div className="mt-3 flex gap-2">
+          <textarea
+            value={messageText}
+            onChange={(e) => setMessageText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void sendAdminMessage()
+            }}
+            placeholder={`Write a message to ${displayName(detail.user)}…`}
+            aria-label={`Message ${displayName(detail.user)}`}
+            rows={2}
+            className="input min-w-0 flex-1 resize-y"
+          />
+          <button
+            onClick={() => void sendAdminMessage()}
+            disabled={!messageText.trim() || sendingMessage}
+            className="btn-admin shrink-0 self-start disabled:opacity-40"
+          >
+            {sendingMessage ? 'Sending…' : 'Send'}
+          </button>
+        </div>
+        <p className="mt-1 text-xs text-[var(--adm-text-dim)]">
+          Delivered immediately — the student sees a banner with your message and an "Open chat" button. Cmd/Ctrl+Enter sends.
+        </p>
       </section>
 
       {/* Issue-resolution actions */}

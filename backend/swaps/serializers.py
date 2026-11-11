@@ -80,7 +80,10 @@ class UserMiniSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ("id", "username", "full_name", "email")
+        # Round 5 (admin call/message): is_staff lets the frontend show
+        # the "Admin" badge on incoming calls and admin-message notices,
+        # and lets it tell a staff sender apart from a student.
+        fields = ("id", "username", "full_name", "email", "is_staff")
 
     def get_full_name(self, obj):
         return full_name_of(obj)

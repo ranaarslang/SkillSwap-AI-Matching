@@ -62,6 +62,10 @@ export default function App() {
   const [loadError, setLoadError] = useState('')
   const [wsStatus, setWsStatus] = useState<WsStatus>('offline')
   const [toast, setToast] = useState('')
+  // An admin message arriving while the student is anywhere else in the
+  // app must be unmissable: a full-width banner with the message text
+  // and an "Open chat" button (not a toast that fades away).
+  const [adminNotice, setAdminNotice] = useState<ChatMessage | null>(null)
   const [viewingProfile, setViewingProfile] = useState<{ profile: Profile; isMatch: boolean; hideScore?: boolean } | null>(null)
   const [feedbackPreselect, setFeedbackPreselect] = useState<number | null>(null)
   const socketRef = useRef<ChatSocket | null>(null)
@@ -129,6 +133,7 @@ export default function App() {
     callManagerRef.current?.endCall()
     callManagerRef.current = null
     setCallState(null)
+    setAdminNotice(null)
     socketRef.current?.close()
     clearAuth()
     setUser(null)
@@ -219,6 +224,12 @@ export default function App() {
           next[i] = msg
           return next
         })
+      }
+      // An admin message to this user (not our own echo, not the thread
+      // already open on screen) gets the prominent banner, so an admin
+      // reaching out is never missed in another tab.
+      if (msg.sender.is_staff && !msg.is_mine && (!peer || msg.sender.id !== peer.id)) {
+        setAdminNotice(msg)
       }
       refreshConversations()
     }
@@ -667,6 +678,7 @@ export default function App() {
               adminTheme={adminTheme}
               onAdminThemeChange={setAdminTheme}
               onMessage={openChatWith}
+              onCall={(u) => void callManagerRef.current?.startCall(u)}
             />
           )}
         </main>
@@ -705,6 +717,49 @@ export default function App() {
           onToggleCamera={() => callManagerRef.current?.toggleCamera()}
           onToggleScreenShare={() => void callManagerRef.current?.toggleScreenShare()}
         />
+      )}
+
+      {/* Admin message banner — full-width, above everything (including
+          the call overlay), with the message text and an Open chat
+          button. Stays until dismissed or opened. */}
+      {adminNotice && (
+        <div
+          role="alert"
+          aria-label="Message from the admin"
+          className="fixed inset-x-0 top-0 z-[60] border-b-2 border-amber-400 bg-slate-950/97 px-4 py-3 text-white shadow-2xl"
+        >
+          <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-3">
+            <span className="shrink-0 rounded-full bg-amber-400 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-widest text-slate-950">
+              🛡 Admin
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold leading-tight">
+                {displayName(adminNotice.sender)} (Admin) messaged you
+              </p>
+              <p className="mt-0.5 break-words text-sm leading-snug text-slate-200">{adminNotice.body}</p>
+            </div>
+            <span className="flex shrink-0 gap-2">
+              <button
+                onClick={() => {
+                  const sender = adminNotice.sender
+                  setAdminNotice(null)
+                  setTab('chat')
+                  selectPeer(sender)
+                }}
+                className="rounded-full bg-amber-400 px-4 py-2 text-sm font-bold text-slate-950 hover:bg-amber-300"
+              >
+                Open chat
+              </button>
+              <button
+                onClick={() => setAdminNotice(null)}
+                aria-label="Dismiss admin message"
+                className="rounded-full bg-white/10 px-3 py-2 text-sm font-bold text-white hover:bg-white/20"
+              >
+                ✕
+              </button>
+            </span>
+          </div>
+        </div>
       )}
 
       {/* Bottom nav (mobile) */}

@@ -87,7 +87,26 @@ export default function CallView(props: Props) {
       </header>
 
       <div className="relative flex-1 min-h-0 mx-4 sm:mx-6 rounded-2xl overflow-hidden bg-slate-900 ring-1 ring-slate-700">
-        {call.remoteStream ? (
+        {call.status === 'incoming' ? (
+          // Full-screen incoming call: big caller, Admin badge, ringing
+          // indicator — visible on any tab, impossible to miss.
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 px-6 text-center">
+            <span className="relative flex h-28 w-28 items-center justify-center rounded-full bg-indigo-600 text-4xl font-bold text-white ring-4 ring-indigo-400/40 sm:h-36 sm:w-36 sm:text-5xl">
+              {initials(call.peer)}
+              <span className="absolute inset-0 animate-ping rounded-full bg-indigo-500/30" aria-hidden />
+            </span>
+            <div>
+              <p className="text-3xl font-extrabold leading-tight text-white sm:text-4xl">{displayName(call.peer)}</p>
+              {call.peer.is_staff && (
+                <span className="mt-2 inline-block rounded-full bg-amber-400 px-3 py-1 text-xs font-extrabold uppercase tracking-widest text-slate-950">
+                  Admin
+                </span>
+              )}
+              <p className="mt-2 text-lg font-semibold text-indigo-200">📹 Video call</p>
+              <p className="mt-1 animate-pulse text-sm font-medium text-slate-300">🔔 Ringing… tap Accept to answer</p>
+            </div>
+          </div>
+        ) : call.remoteStream ? (
           <video ref={remoteRef} autoPlay playsInline className="absolute inset-0 w-full h-full object-cover" />
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-300">
@@ -95,7 +114,6 @@ export default function CallView(props: Props) {
               {initials(call.peer)}
             </span>
             <p className="text-sm font-medium">{statusText(call)}</p>
-            {call.status === 'incoming' && <p className="text-xs text-slate-400">Answer to turn on your camera and microphone.</p>}
           </div>
         )}
 
@@ -137,16 +155,16 @@ export default function CallView(props: Props) {
 
       <div className="flex items-center justify-center gap-3 px-4 py-5">
         {call.status === 'incoming' ? (
-          <>
-            <button onClick={props.onDecline} className="rounded-full bg-red-600 hover:bg-red-700 text-white font-semibold px-6 py-3">
-              Decline
+          <div className="flex w-full max-w-lg flex-col-reverse gap-3 sm:flex-row sm:justify-center">
+            <button onClick={props.onDecline} aria-label="Decline call" className="rounded-full bg-red-600 px-8 py-4 text-lg font-bold text-white hover:bg-red-700">
+              ✕ Decline
             </button>
-            <button onClick={props.onAccept} className="rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-6 py-3">
-              Accept video call
+            <button onClick={props.onAccept} aria-label="Accept video call" className="rounded-full bg-emerald-600 px-8 py-4 text-lg font-bold text-white hover:bg-emerald-700">
+              ✓ Accept video call
             </button>
-          </>
+          </div>
         ) : call.status === 'ended' ? (
-          <p className="text-slate-200 text-sm font-medium">{call.notice ?? 'Call ended.'}</p>
+          <p className="max-w-2xl text-center text-sm font-medium text-slate-200">{call.notice ?? 'Call ended.'}</p>
         ) : (
           <>
             {/* Round 3f: the control bar renders whatever the media state.

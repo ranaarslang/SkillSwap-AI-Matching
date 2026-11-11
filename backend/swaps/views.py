@@ -615,9 +615,11 @@ def messages(request):
     )
     # Round 3c: a number or a link is HELD for admin approval — saved as
     # pending and only the sender is told. Never rejected at the door,
-    # never delivered until approved.
+    # never delivered until approved. Round 5: staff messages skip the
+    # hold — the admin IS the moderator, so an admin message to a student
+    # must reach them immediately.
     reasons = flag_reasons(body)
-    if reasons:
+    if reasons and not me.is_staff:
         message.moderation_status = ChatMessage.ModerationStatus.PENDING
         message.flag_reason = ",".join(reasons)
         message.save(update_fields=["moderation_status", "flag_reason"])
@@ -682,9 +684,10 @@ def upload_message(request):
         size=upload.size,
     )
     # Round 3c: a flagged caption holds the whole message (file included)
-    # for admin approval, exactly like a flagged text message.
+    # for admin approval, exactly like a flagged text message. Round 5:
+    # staff messages skip the hold (see send_message above).
     reasons = flag_reasons(body)
-    if reasons:
+    if reasons and not me.is_staff:
         message.moderation_status = ChatMessage.ModerationStatus.PENDING
         message.flag_reason = ",".join(reasons)
         message.save(update_fields=["moderation_status", "flag_reason"])
