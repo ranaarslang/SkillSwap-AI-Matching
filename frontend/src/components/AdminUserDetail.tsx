@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { AdminUserDetail, MatchProfile, SessionItem } from '../api'
-import { api, ApiError, displayName } from '../api'
+import { api, ApiError, displayName, formatFileSize } from '../api'
 import { Avatar, Chip, StatusBadge, TrustBadge, VerifiedBadge } from './ui'
 
 interface Props {
@@ -374,6 +374,12 @@ export default function AdminUserDetail({ userId, currentUserId, onBack, onMessa
                 <span className="min-w-0 text-sm">
                   <span className="font-semibold text-slate-100">{displayName(m.sender)} → {displayName(m.recipient)}</span>
                   <span className="block text-slate-400">{m.body}</span>
+                  {m.code_language && (
+                    <span className="block text-xs text-violet-300">Code · {m.code_language}</span>
+                  )}
+                  {m.attachment && (
+                    <span className="block text-xs text-sky-300">📎 {m.attachment.name} · {formatFileSize(m.attachment.size)}</span>
+                  )}
                   <span className="text-xs text-slate-500">{new Date(m.created_at).toLocaleString()}</span>
                 </span>
                 {confirmAction === `delete-msg-${m.id}` ? (

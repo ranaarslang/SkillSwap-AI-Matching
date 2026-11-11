@@ -6,11 +6,54 @@ Profile shape: {id, user, bio, location, availability, portfolio_link,
                 teach_skills:[...], learn_skills:[...]}
 """
 from django.contrib.auth import get_user_model
+from django.core import signing
 from rest_framework import serializers
 
 from django.db.models import Avg, Count
 
-from .models import ChatMessage, IntegrityReview, Profile, SwapSession, UserSkill
+from .models import (
+    ChatAttachment,
+    ChatMessage,
+    IMAGE_ATTACHMENT_EXTENSIONS,
+    IntegrityReview,
+    Profile,
+    SwapSession,
+    UserSkill,
+)
+
+ATTACHMENT_URL_SALT = "skillswap-attachment"
+# Signed download links stay valid for 1 hour; the chat re-fetches history
+# on open, so links are always fresh when shown.
+ATTACHMENT_URL_MAX_AGE_SECONDS = 3600
+
+
+def attachment_download_url(attachment, viewer):
+    """Signed, per-viewer download URL (path relative to the API root).
+
+    The token binds the attachment id to the viewer, so an <img> tag or a
+    plain <a> can fetch it without an Authorization header, and no other
+    user can reuse the link. The download view re-checks that the viewer
+    is a participant of the message.
+    """
+    token = signing.dumps(
+        {"att": attachment.id, "u": viewer.id}, salt=ATTACHMENT_URL_SALT
+    )
+    # No leading slash: the client resolves this against the API base
+    # (e.g. https://host/api) so the /api prefix is kept.
+    return f"attachments/{attachment.id}/download/?t={token}"
+
+
+def attachment_payload(attachment, viewer):
+    return {
+        "id": attachment.id,
+        "name": attachment.original_filename,
+        "size": attachment.size,
+        "content_type": attachment.content_type,
+        "is_image": attachment.file.name.lower().endswith(
+            tuple(IMAGE_ATTACHMENT_EXTENSIONS)
+        ),
+        "url": attachment_download_url(attachment, viewer),
+    }
 
 
 def rating_stats_for(user):

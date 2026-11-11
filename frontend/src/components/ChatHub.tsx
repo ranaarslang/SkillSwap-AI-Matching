@@ -1,9 +1,66 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import type { ChatMessage, Conversation, MatchProfile, SessionItem, User, WsStatus } from '../api'
-import { api, ApiError, displayName } from '../api'
+import { api, ApiError, CODE_LANGUAGES, attachmentUrl, displayName, formatFileSize } from '../api'
 import { Avatar, StatusBadge, fmtDate } from './ui'
 
 const DURATION_OPTIONS = ['30 Minutes', '1 Hour Mutual Swap', '2 Hours']
+const ATTACH_ACCEPT = '.jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.txt,.md,.csv,.xls,.xlsx,.ppt,.pptx'
+
+/** One chat bubble's content: plain text, a code snippet, and/or a file. */
+function ChatMessageBody({ m, mine }: { m: ChatMessage; mine: boolean }) {
+  const [copied, setCopied] = useState(false)
+
+  async function copyCode() {
+    try {
+      await navigator.clipboard.writeText(m.body)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      /* clipboard unavailable — the text is still visible */
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      {m.code_language ? (
+        <div>
+          <div className={`flex items-center justify-between gap-2 text-[11px] font-semibold ${mine ? 'text-indigo-100' : 'text-slate-500'}`}>
+            <span>Code · {m.code_language}</span>
+            <button onClick={copyCode} className={`rounded px-2 py-0.5 ${mine ? 'bg-white/20 hover:bg-white/30 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}>
+              {copied ? 'Copied ✓' : 'Copy'}
+            </button>
+          </div>
+          <pre className="mt-1 rounded-lg bg-slate-900 text-emerald-100 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words p-3 overflow-x-auto max-w-full">{m.body}</pre>
+        </div>
+      ) : (
+        m.body && <p className="whitespace-pre-wrap break-words">{m.body}</p>
+      )}
+      {m.attachment && (
+        <div>
+          {m.attachment.is_image ? (
+            <a href={attachmentUrl(m.attachment)} target="_blank" rel="noreferrer" title="Open full image">
+              <img src={attachmentUrl(m.attachment)} alt={m.attachment.name} className="max-w-full rounded-lg max-h-56 object-contain bg-white/10" />
+            </a>
+          ) : (
+            <a
+              href={attachmentUrl(m.attachment)}
+              download={m.attachment.name}
+              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold ${mine ? 'bg-white/20 hover:bg-white/30 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-800'}`}
+            >
+              <span aria-hidden>📎</span>
+              <span className="min-w-0 flex-1 truncate">{m.attachment.name}</span>
+              <span className="shrink-0 opacity-80">{formatFileSize(m.attachment.size)}</span>
+              <span className="shrink-0 underline">Download</span>
+            </a>
+          )}
+          <p className={`text-[11px] mt-1 ${mine ? 'text-indigo-200' : 'text-slate-400'}`}>
+            {m.attachment.name} · {formatFileSize(m.attachment.size)}
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
 
 interface Props {
   conversations: Conversation[]
@@ -21,6 +78,8 @@ interface Props {
   onSessionsChanged: () => void
   /** Jump to the Feedback Hub with this completed session pre-selected. */
   onRateSession: (session: SessionItem) => void
+  /** Start an in-app video call with the selected peer. */
+  onStartCall: (peer: User) => void
 }
 
 function otherPerson(s: SessionItem, me: number): User {
@@ -33,6 +92,11 @@ export default function ChatHub(props: Props) {
   const [draft, setDraft] = useState('')
   const [sendError, setSendError] = useState('')
   const [sending, setSending] = useState(false)
+  const [codeMode, setCodeMode] = useState(false)
+  const [codeDraft, setCodeDraft] = useState('')
+  const [codeLanguage, setCodeLanguage] = useState('python')
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [schedDate, setSchedDate] = useState(new Date(Date.now() + 86400000).toISOString().slice(0, 10))
   const [schedDuration, setSchedDuration] = useState(DURATION_OPTIONS[1])
   const [schedError, setSchedError] = useState('')
@@ -73,6 +137,47 @@ export default function ChatHub(props: Props) {
       setSendError(err instanceof ApiError ? err.detail : 'Message could not be sent.')
     } finally {
       setSending(false)
+    }
+  }
+
+  async function sendCode(e: React.FormEvent) {
+    e.preventDefault()
+    const body = codeDraft.trim()
+    if (!body || !selectedPeer || sending) return
+    setSendError('')
+    setSending(true)
+    try {
+      // A code snippet is a message with a language tag — it renders in a
+      // monospace block for both sides, inside the app.
+      const created = await api.sendMessage({ recipient_id: selectedPeer.id, body, code_language: codeLanguage })
+      props.onSent(created)
+      setCodeDraft('')
+      setCodeMode(false)
+      props.onRefreshConversations()
+    } catch (err) {
+      setSendError(err instanceof ApiError ? err.detail : 'Code could not be sent.')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file || !selectedPeer || uploading) return
+    setSendError('')
+    setUploading(true)
+    try {
+      const form = new FormData()
+      form.append('recipient_id', String(selectedPeer.id))
+      form.append('file', file)
+      const created = await api.uploadMessage(form)
+      props.onSent(created)
+      props.onRefreshConversations()
+    } catch (err) {
+      setSendError(err instanceof ApiError ? err.detail : 'File could not be sent.')
+    } finally {
+      setUploading(false)
     }
   }
 
@@ -160,7 +265,9 @@ export default function ChatHub(props: Props) {
                             )}
                           </span>
                           <span className="block text-xs text-slate-500 truncate">
-                            {c.last_message ? c.last_message.body : 'No messages yet — say hello!'}
+                            {c.last_message
+                              ? c.last_message.body || (c.last_message.attachment_name ? `📎 ${c.last_message.attachment_name}` : 'No messages yet — say hello!')
+                              : 'No messages yet — say hello!'}
                           </span>
                         </span>
                       </button>
@@ -199,6 +306,14 @@ export default function ChatHub(props: Props) {
                   >
                     {props.wsStatus === 'live' ? '● Live' : props.wsStatus === 'connecting' ? '● Connecting…' : '● Offline — messages still send'}
                   </span>
+                  <button
+                    onClick={() => selectedPeer && props.onStartCall(selectedPeer)}
+                    disabled={props.wsStatus !== 'live'}
+                    className="rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold px-3 py-2"
+                    title={props.wsStatus === 'live' ? 'Start an in-app video call' : 'Video call needs a live connection'}
+                  >
+                    📹 Video call
+                  </button>
                 </header>
 
                 <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2 max-h-[380px]">
@@ -216,7 +331,7 @@ export default function ChatHub(props: Props) {
                       return (
                         <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                           <div className={`max-w-[75%] rounded-xl px-3.5 py-2 text-sm ${mine ? 'bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-md rounded-br-sm' : 'bg-white text-slate-800 ring-1 ring-slate-200 shadow-sm rounded-bl-sm'}`}>
-                            <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                            <ChatMessageBody m={m} mine={mine} />
                             <p className={`text-[11px] mt-1 ${mine ? 'text-indigo-200' : 'text-slate-400'}`}>
                               {new Date(m.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                             </p>
@@ -230,18 +345,83 @@ export default function ChatHub(props: Props) {
                 {sendError && (
                   <div role="alert" className="mx-4 mb-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2">{sendError}</div>
                 )}
-                <form onSubmit={send} className="flex gap-2 px-4 py-3 border-t border-slate-200">
-                  <input
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    placeholder={`Message ${displayName(selectedPeer)}…`}
-                    aria-label="Message"
-                    className="input flex-1 min-w-0"
-                  />
-                  <button type="submit" disabled={sending || !draft.trim()} className="btn-primary">
-                    {sending ? 'Sending…' : 'Send'}
-                  </button>
-                </form>
+                {uploading && (
+                  <p role="status" className="mx-4 mb-2 text-sm text-slate-500">Uploading file…</p>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={ATTACH_ACCEPT}
+                  className="hidden"
+                  aria-label="Attach a file"
+                  onChange={handleFileSelect}
+                />
+                {codeMode ? (
+                  <form onSubmit={sendCode} className="px-4 py-3 border-t border-slate-200 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-semibold text-slate-600" htmlFor="code-language">Share code ·</label>
+                      <select
+                        id="code-language"
+                        value={codeLanguage}
+                        onChange={(e) => setCodeLanguage(e.target.value)}
+                        className="input !w-auto !py-1.5 text-sm"
+                      >
+                        {CODE_LANGUAGES.map((l) => (
+                          <option key={l} value={l}>{l}</option>
+                        ))}
+                      </select>
+                      <span className="text-xs text-slate-500">It shows as a code block for both of you.</span>
+                    </div>
+                    <textarea
+                      value={codeDraft}
+                      onChange={(e) => setCodeDraft(e.target.value)}
+                      placeholder="Paste your code here…"
+                      aria-label="Code to share"
+                      rows={4}
+                      className="input font-mono text-sm w-full"
+                    />
+                    <div className="flex gap-2">
+                      <button type="submit" disabled={sending || !codeDraft.trim()} className="btn-primary">
+                        {sending ? 'Sending…' : 'Send code'}
+                      </button>
+                      <button type="button" onClick={() => { setCodeMode(false); setCodeDraft('') }} className="rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold px-4 py-2.5">
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <form onSubmit={send} className="flex gap-2 px-4 py-3 border-t border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                      className="rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50 text-sm font-semibold px-3"
+                      title="Send a document or image (max 10 MB)"
+                      aria-label="Attach a file"
+                    >
+                      📎
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCodeMode(true)}
+                      className="rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm font-semibold px-3"
+                      title="Share a code snippet"
+                      aria-label="Share code"
+                    >
+                      {'</>'}
+                    </button>
+                    <input
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      placeholder={`Message ${displayName(selectedPeer)}…`}
+                      aria-label="Message"
+                      className="input flex-1 min-w-0"
+                    />
+                    <button type="submit" disabled={sending || !draft.trim()} className="btn-primary">
+                      {sending ? 'Sending…' : 'Send'}
+                    </button>
+                  </form>
+                )}
 
                 {/* Scheduler */}
                 <form onSubmit={finalizeSession} className="border-t border-slate-200 bg-slate-50 px-4 py-4 space-y-3">

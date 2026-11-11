@@ -6,6 +6,9 @@ import ChatHub from './components/ChatHub'
 import FeedbackHub from './components/FeedbackHub'
 import AdminPanel from './components/AdminPanel'
 import ProfileModal from './components/ProfileModal'
+import CallView from './components/CallView'
+import { CallManager } from './call'
+import type { CallState } from './call'
 import { Avatar, IconChat, IconLogout, IconSearch, IconShield, IconSpark, IconStar, IconUser, LogoMark } from './components/ui'
 import {
   api,
@@ -63,6 +66,8 @@ export default function App() {
   const socketRef = useRef<ChatSocket | null>(null)
   const selectedPeerRef = useRef<User | null>(null)
   selectedPeerRef.current = selectedPeer
+  const callManagerRef = useRef<CallManager | null>(null)
+  const [callState, setCallState] = useState<CallState | null>(null)
 
   const loadAll = useCallback(async () => {
     setLoading(true)
@@ -104,6 +109,9 @@ export default function App() {
   }, [])
 
   const doLogout = useCallback(() => {
+    callManagerRef.current?.endCall()
+    callManagerRef.current = null
+    setCallState(null)
     socketRef.current?.close()
     clearAuth()
     setUser(null)
@@ -144,6 +152,16 @@ export default function App() {
     const socket = new ChatSocket()
     socketRef.current = socket
     socket.onStatus = (s) => setWsStatus(s)
+    // In-app video calls: the manager owns the WebRTC peer connection;
+    // the socket carries only the signaling frames.
+    if (user) {
+      const manager = new CallManager(socketRef, user)
+      manager.onChange = setCallState
+      callManagerRef.current = manager
+      socket.onCallEvent = (ev) => {
+        void manager.handleEvent(ev)
+      }
+    }
     socket.onMessage = (msg) => {
       const peer = selectedPeerRef.current
       if (peer && (msg.sender.id === peer.id || msg.recipient.id === peer.id)) {
@@ -205,10 +223,12 @@ export default function App() {
     selectPeer(peerProfile.user)
   }
 
-  // When a message is sent via REST, also push it over the socket for live delivery.
+  // REST is the single send path: POST /api/messages/ already saves the
+  // row AND broadcasts it live to the peer (and echoes it to us via the
+  // socket). Re-sending the body over the socket here used to save a
+  // SECOND row and show the message twice — do not re-add a WS send.
   function handleSent(msg: ChatMessage) {
     setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]))
-    if (selectedPeer) socketRef.current?.send(selectedPeer.id, msg.body)
   }
 
   function handleSearchChange(v: string) {
@@ -453,6 +473,7 @@ export default function App() {
                 setFeedbackPreselect(s.id)
                 setTab('feedback')
               }}
+              onStartCall={(peer) => callManagerRef.current?.startCall(peer)}
             />
           )}
           {tab === 'feedback' && (
@@ -483,6 +504,22 @@ export default function App() {
           hideScore={viewingProfile.hideScore}
           onClose={() => setViewingProfile(null)}
           onMessage={openChatWith}
+          onCall={(p) => {
+            setViewingProfile(null)
+            void callManagerRef.current?.startCall(p.user)
+          }}
+        />
+      )}
+
+      {/* In-app video call overlay (rings on any tab) */}
+      {callState && (
+        <CallView
+          call={callState}
+          onAccept={() => void callManagerRef.current?.acceptCall()}
+          onDecline={() => callManagerRef.current?.declineCall()}
+          onEnd={() => callManagerRef.current?.endCall()}
+          onToggleMute={() => callManagerRef.current?.toggleMute()}
+          onToggleCamera={() => callManagerRef.current?.toggleCamera()}
         />
       )}
 

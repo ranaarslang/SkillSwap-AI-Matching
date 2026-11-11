@@ -25,6 +25,12 @@ urlpatterns = [
     # Messaging
     path("conversations/", views.conversations, name="conversations"),
     path("messages/", views.messages, name="messages"),
+    path("messages/upload/", views.upload_message, name="upload_message"),
+    path(
+        "attachments/<int:attachment_id>/download/",
+        views.download_attachment,
+        name="download_attachment",
+    ),
     # Reviews
     path("reviews/", views.reviews, name="reviews"),
     # Admin (staff only — IsAdminUser)

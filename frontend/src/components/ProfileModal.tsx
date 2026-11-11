@@ -12,6 +12,9 @@ interface Props {
   isMatch: boolean
   onClose: () => void
   onMessage: (profile: Profile) => void
+  /** Start an in-app video call with this user (optional — omitted where
+   * the call button doesn't apply, e.g. the admin detail view). */
+  onCall?: (profile: Profile) => void
   /** Admin profile views hide the match score — it is meaningless there. */
   hideScore?: boolean
 }
@@ -21,7 +24,7 @@ interface Props {
  * out — bio, location, availability, trust score, teach/learn skills,
  * recent reviews, and a prominent Message button.
  */
-export default function ProfileModal({ profile, isMatch, onClose, onMessage, hideScore = false }: Props) {
+export default function ProfileModal({ profile, isMatch, onClose, onMessage, onCall, hideScore = false }: Props) {
   const [reviews, setReviews] = useState<Review[] | null>(null)
 
   useEffect(() => {
@@ -180,6 +183,15 @@ export default function ProfileModal({ profile, isMatch, onClose, onMessage, hid
             >
               Message {displayName(profile.user).split(' ')[0]}
             </button>
+            {onCall && (
+              <button
+                onClick={() => onCall(profile)}
+                className="rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2.5"
+                title="Start an in-app video call"
+              >
+                📹 Video call
+              </button>
+            )}
             <button
               onClick={onClose}
               className="btn-secondary"

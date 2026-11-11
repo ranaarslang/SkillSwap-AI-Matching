@@ -69,6 +69,10 @@ class ChatMessage(models.Model):
     # Additive (not in the SDD): read tracking so conversations can report
     # a real unread_count. Marked read when the peer's history is fetched.
     is_read = models.BooleanField(default=False)
+    # Additive (round 3b, in-app code sharing): when set, the message is a
+    # code snippet rendered in a monospace block. One of CODE_LANGUAGES
+    # (validated in views), or None for a plain text message.
+    code_language = models.CharField(max_length=32, blank=True, null=True)
 
     class Meta:
         indexes = [models.Index(fields=["sender", "receiver", "sent_at"])]
@@ -76,6 +80,68 @@ class ChatMessage(models.Model):
 
     def __str__(self):
         return f"{self.sender.username} -> {self.receiver.username} @ {self.sent_at}"
+
+
+def attachment_upload_path(instance, filename):
+    """Randomised name under attachments/<year>/<month>/ — never the
+    client-supplied name, so no collisions and no path traversal.
+    (created_at is None here — upload_to runs before the row is saved —
+    so the current date is used instead.)"""
+    import os
+    import uuid
+
+    from django.utils import timezone
+
+    ext = os.path.splitext(filename)[1].lower()
+    now = timezone.now()
+    return f"attachments/{now:%Y/%m}/{uuid.uuid4().hex}{ext}"
+
+
+class ChatAttachment(models.Model):
+    """One file attached to a chat message (round 3b, in-app document
+    sharing). The file lives on the backend disk under MEDIA_ROOT; the
+    download URL is signed per viewer (see serializers.attachment_payload)
+    so only the two chat participants can fetch it. NOTE: on Render's free
+    tier the disk is ephemeral — an uploaded file survives until the next
+    deploy/restart, like the old SQLite data did before the Neon move."""
+
+    message = models.OneToOneField(
+        ChatMessage, on_delete=models.CASCADE, related_name="attachment"
+    )
+    file = models.FileField(upload_to=attachment_upload_path)
+    original_filename = models.CharField(max_length=255)
+    content_type = models.CharField(max_length=120, blank=True, default="")
+    size = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Attachment({self.original_filename}, {self.size} bytes)"
+
+    def delete(self, *args, **kwargs):
+        # Remove the stored file too (admin message delete cascades here).
+        storage = self.file.storage
+        name = self.file.name
+        super().delete(*args, **kwargs)
+        if name:
+            storage.delete(name)
+
+
+# File uploads: 10 MB cap, images / PDF / office+text docs only. Executables
+# and anything else are rejected (validated in views.upload_message).
+MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
+ALLOWED_ATTACHMENT_EXTENSIONS = {
+    ".jpg", ".jpeg", ".png", ".gif", ".webp",
+    ".pdf",
+    ".doc", ".docx", ".txt", ".md", ".csv", ".xls", ".xlsx", ".ppt", ".pptx",
+}
+IMAGE_ATTACHMENT_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+
+# Code snippets: the languages the composer offers (validated in views).
+CODE_LANGUAGES = {
+    "python", "javascript", "typescript", "java", "c", "cpp", "csharp",
+    "go", "rust", "ruby", "php", "html", "css", "sql", "bash", "json",
+    "other",
+}
 
 
 class SwapSession(models.Model):

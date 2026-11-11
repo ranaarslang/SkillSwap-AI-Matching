@@ -1,10 +1,13 @@
 """API views for the Skill Swap Platform (JWT auth, base /api)."""
+import os
 import re
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.contrib.auth import authenticate, get_user_model
+from django.core import signing
 from django.db.models import Avg, Q
+from django.http import FileResponse
 from django.utils.text import slugify
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -14,6 +17,10 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from .matcher import MATCH_THRESHOLD, CandidateSkills, get_matcher
 from .models import (
+    ALLOWED_ATTACHMENT_EXTENSIONS,
+    CODE_LANGUAGES,
+    MAX_ATTACHMENT_BYTES,
+    ChatAttachment,
     ChatMessage,
     IntegrityReview,
     Profile,
@@ -22,11 +29,14 @@ from .models import (
     recalculate_trust_score,
 )
 from .serializers import (
+    ATTACHMENT_URL_MAX_AGE_SECONDS,
+    ATTACHMENT_URL_SALT,
     ProfileSerializer,
     ProfileUpdateSerializer,
     ReviewSerializer,
     SessionSerializer,
     UserMiniSerializer,
+    attachment_payload,
     full_name_of,
 )
 
@@ -420,7 +430,17 @@ def session_detail(request, session_id):
 
 
 # ---------------------------------------------------------------- messaging
+def _attachment_of(message):
+    """The message's ChatAttachment, or None. Reverse OneToOne raises
+    DoesNotExist when the relation wasn't pre-fetched, so catch it."""
+    try:
+        return message.attachment
+    except ChatAttachment.DoesNotExist:
+        return None
+
+
 def _message_payload(message, viewer):
+    att = _attachment_of(message)
     return {
         "id": message.id,
         "sender": UserMiniSerializer(message.sender).data,
@@ -428,29 +448,25 @@ def _message_payload(message, viewer):
         "body": message.message_body,
         "created_at": message.sent_at.isoformat(),
         "is_mine": message.sender_id == viewer.id,
+        # Round 3b: code snippets + file attachments ride on the message.
+        "code_language": message.code_language,
+        "attachment": attachment_payload(att, viewer) if att else None,
     }
 
 
 def _broadcast_message(message):
-    """Push a saved message to both the recipient's and sender's WS groups."""
+    """Push a saved message to both the recipient's and sender's WS groups.
+
+    The payload is built per viewer (the attachment download URL is signed
+    for that viewer), so each side gets its own copy.
+    """
     channel_layer = get_channel_layer()
     if channel_layer is None:
         return
-    base = {
-        "id": message.id,
-        "sender": UserMiniSerializer(message.sender).data,
-        "recipient": UserMiniSerializer(message.receiver).data,
-        "body": message.message_body,
-        "created_at": message.sent_at.isoformat(),
-    }
-    for user_id, is_mine in (
-        (message.receiver_id, False),
-        (message.sender_id, True),
-    ):
-        payload = dict(base)
-        payload["is_mine"] = is_mine
+    for viewer in (message.receiver, message.sender):
+        payload = _message_payload(message, viewer)
         async_to_sync(channel_layer.group_send)(
-            f"user_{user_id}",
+            f"user_{viewer.id}",
             {"type": "chat_message", "data": payload},
         )
 
@@ -461,7 +477,7 @@ def conversations(request):
     me = request.user
     msgs = ChatMessage.objects.filter(
         Q(sender=me) | Q(receiver=me)
-    ).order_by("-sent_at")
+    ).order_by("-sent_at").select_related("sender", "receiver", "attachment")
     peers = {}
     for m in msgs:
         peer = m.receiver if m.sender_id == me.id else m.sender
@@ -472,12 +488,14 @@ def conversations(request):
         unread = ChatMessage.objects.filter(
             sender_id=peer_id, receiver=me, is_read=False
         ).count()
+        last_att = _attachment_of(info["last"])
         out.append({
             "peer": UserMiniSerializer(info["peer"]).data,
             "last_message": {
                 "body": info["last"].message_body,
                 "created_at": info["last"].sent_at.isoformat(),
                 "sender_id": info["last"].sender_id,
+                "attachment_name": last_att.original_filename if last_att else None,
             },
             "unread_count": unread,
         })
@@ -509,12 +527,20 @@ def messages(request):
         ).update(is_read=True)
         data = [
             _message_payload(m, me)
-            for m in qs.select_related("sender", "receiver")
+            for m in qs.select_related("sender", "receiver", "attachment")
         ]
         return Response(data)
 
     recipient_id = request.data.get("recipient_id")
     body = (request.data.get("body") or "").strip()
+    code_language = request.data.get("code_language") or None
+    if code_language is not None:
+        code_language = str(code_language).strip().lower()
+        if code_language not in CODE_LANGUAGES:
+            return Response(
+                {"detail": f"Unsupported code language: {code_language}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
     if not recipient_id or not body:
         return Response(
             {"detail": "recipient_id and a non-empty body are required."},
@@ -525,11 +551,122 @@ def messages(request):
     except (User.DoesNotExist, ValueError, TypeError):
         return Response({"detail": "Recipient not found."}, status=404)
     message = ChatMessage.objects.create(
-        sender=me, receiver=recipient, message_body=body
+        sender=me, receiver=recipient, message_body=body,
+        code_language=code_language,
     )
     _broadcast_message(message)
     return Response(
         _message_payload(message, me), status=status.HTTP_201_CREATED
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def upload_message(request):
+    """Send a document/file inside a chat (round 3b, in-app document
+    sharing). Multipart: recipient_id, optional body, file. The file is
+    stored on the backend; the returned message carries a signed download
+    URL for the viewer. 10 MB cap, images/PDF/docs only."""
+    me = request.user
+    recipient_id = request.data.get("recipient_id")
+    body = (request.data.get("body") or "").strip()
+    upload = request.FILES.get("file")
+    if not recipient_id:
+        return Response(
+            {"detail": "recipient_id is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if upload is None:
+        return Response(
+            {"detail": "No file attached."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if upload.size > MAX_ATTACHMENT_BYTES:
+        return Response(
+            {"detail": "File is too large — the limit is 10 MB."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    ext = os.path.splitext(upload.name)[1].lower()
+    if ext not in ALLOWED_ATTACHMENT_EXTENSIONS:
+        return Response(
+            {"detail": f"File type {ext or '(none)'} is not allowed. "
+                       "Send an image, a PDF or a document."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    try:
+        recipient = User.objects.get(id=recipient_id)
+    except (User.DoesNotExist, ValueError, TypeError):
+        return Response({"detail": "Recipient not found."}, status=404)
+    if recipient.id == me.id:
+        return Response(
+            {"detail": "You cannot send a file to yourself."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    message = ChatMessage.objects.create(
+        sender=me, receiver=recipient, message_body=body
+    )
+    ChatAttachment.objects.create(
+        message=message,
+        file=upload,
+        original_filename=upload.name[:255],
+        content_type=upload.content_type or "",
+        size=upload.size,
+    )
+    _broadcast_message(message)
+    return Response(
+        _message_payload(message, me), status=status.HTTP_201_CREATED
+    )
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def download_attachment(request, attachment_id):
+    """Serve one chat attachment. Auth is the signed ?t= token minted by
+    attachment_download_url (bound to one viewer, 1 hour). The viewer must
+    be a participant of the message, or staff (moderation). Images stream
+    inline so <img> can show them; other files download."""
+    token = request.query_params.get("t") or ""
+    try:
+        claims = signing.loads(
+            token, salt=ATTACHMENT_URL_SALT,
+            max_age=ATTACHMENT_URL_MAX_AGE_SECONDS,
+        )
+    except signing.BadSignature:
+        return Response(
+            {"detail": "This download link is invalid or has expired."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    try:
+        attachment = ChatAttachment.objects.select_related(
+            "message__sender", "message__receiver"
+        ).get(id=attachment_id)
+    except (ChatAttachment.DoesNotExist, ValueError, TypeError):
+        return Response({"detail": "Attachment not found."}, status=404)
+    if claims.get("att") != attachment.id:
+        return Response({"detail": "Invalid download link."},
+                        status=status.HTTP_403_FORBIDDEN)
+    try:
+        viewer = User.objects.get(id=claims.get("u"))
+    except (User.DoesNotExist, ValueError, TypeError):
+        return Response({"detail": "Invalid download link."},
+                        status=status.HTTP_403_FORBIDDEN)
+    msg = attachment.message
+    if viewer.id not in (msg.sender_id, msg.receiver_id) and not viewer.is_staff:
+        return Response({"detail": "You are not part of this chat."},
+                        status=status.HTTP_403_FORBIDDEN)
+    if not attachment.file or not os.path.exists(attachment.file.path):
+        return Response(
+            {"detail": "This file is no longer available on the server."},
+            status=status.HTTP_410_GONE,
+        )
+    is_image = attachment.file.name.lower().endswith(
+        (".jpg", ".jpeg", ".png", ".gif", ".webp")
+    )
+    return FileResponse(
+        open(attachment.file.path, "rb"),
+        content_type=attachment.content_type or "application/octet-stream",
+        as_attachment=not is_image,
+        filename=None if is_image else attachment.original_filename,
     )
 
 

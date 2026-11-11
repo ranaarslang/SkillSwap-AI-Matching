@@ -68,8 +68,25 @@ export interface SessionItem {
 
 export interface Conversation {
   peer: User
-  last_message: { body: string; created_at: string; sender_id: number } | null
+  last_message: {
+    body: string
+    created_at: string
+    sender_id: number
+    /** Original filename when the last message carries a file, else null. */
+    attachment_name?: string | null
+  } | null
   unread_count: number
+}
+
+/** One file attached to a chat message (round 3b). `url` is a relative
+ * path against the API base, signed per viewer for 1 hour. */
+export interface AttachmentInfo {
+  id: number
+  name: string
+  size: number
+  content_type: string
+  is_image: boolean
+  url: string
 }
 
 export interface ChatMessage {
@@ -79,6 +96,28 @@ export interface ChatMessage {
   body: string
   created_at: string
   is_mine: boolean
+  /** Language of a code snippet, or null for a plain text message. */
+  code_language: string | null
+  attachment: AttachmentInfo | null
+}
+
+/** Languages the code composer offers (must match the backend allowlist). */
+export const CODE_LANGUAGES = [
+  'python', 'javascript', 'typescript', 'java', 'c', 'cpp', 'csharp',
+  'go', 'rust', 'ruby', 'php', 'html', 'css', 'sql', 'bash', 'json', 'other',
+]
+
+/** Resolve a signed attachment path (relative to the API root) to a
+ * fetchable absolute URL. */
+export function attachmentUrl(att: AttachmentInfo): string {
+  return new URL(att.url, `${API_BASE}/`).toString()
+}
+
+/** Human-readable file size for attachment chips. */
+export function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 export interface Review {
@@ -241,8 +280,37 @@ export const api = {
     request<SessionItem>(`/sessions/${id}/`, { method: 'PUT', body: JSON.stringify(body) }),
   getConversations: () => request<Conversation[]>('/conversations/'),
   getMessages: (peerId: number) => request<ChatMessage[]>(`/messages/?peer=${peerId}`),
-  sendMessage: (body: { recipient_id: number; body: string }) =>
+  sendMessage: (body: { recipient_id: number; body: string; code_language?: string }) =>
     request<ChatMessage>('/messages/', { method: 'POST', body: JSON.stringify(body) }),
+  /** Send a file inside a chat (multipart). The returned message carries
+   * the attachment with a signed download URL. */
+  uploadMessage: async (form: FormData): Promise<ChatMessage> => {
+    const token = getAccessToken()
+    const headers: Record<string, string> = {}
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    let res: Response
+    try {
+      res = await fetch(`${API_BASE}/messages/upload/`, { method: 'POST', headers, body: form })
+    } catch {
+      throw new ApiError(0, 'Could not reach the server. Is the backend running?')
+    }
+    if (res.status === 401 && token) {
+      const ok = await tryRefresh()
+      if (ok) return api.uploadMessage(form)
+      clearAuth()
+      window.dispatchEvent(new Event('skillswap:unauthorized'))
+      throw new ApiError(401, 'Your session expired. Please log in again.')
+    }
+    const text = await res.text()
+    let data: unknown = null
+    try {
+      data = text ? JSON.parse(text) : null
+    } catch {
+      data = text
+    }
+    if (!res.ok) throw new ApiError(res.status, extractDetail(data, `Upload failed (${res.status})`))
+    return data as ChatMessage
+  },
   createReview: (body: { session_id: number; rating_stars: number; feedback_text: string }) =>
     request<Review>('/reviews/', { method: 'POST', body: JSON.stringify(body) }),
   getReviews: (userId: number) => request<Review[]>(`/reviews/?user=${userId}`),
@@ -284,6 +352,8 @@ export class ChatSocket {
   onMessage: ((msg: ChatMessage) => void) | null = null
   onStatus: ((s: WsStatus) => void) | null = null
   onReconnect: (() => void) | null = null
+  /** Video-call signaling frames (call.incoming / call.accepted / …). */
+  onCallEvent: ((ev: Record<string, unknown>) => void) | null = null
 
   connect() {
     const token = getAccessToken()
@@ -315,6 +385,8 @@ export class ChatSocket {
         const data = JSON.parse(ev.data as string)
         if (data?.type === 'chat.message' && data.message) {
           this.onMessage?.(data.message as ChatMessage)
+        } else if (typeof data?.type === 'string' && data.type.startsWith('call.')) {
+          this.onCallEvent?.(data as Record<string, unknown>)
         }
       } catch {
         /* ignore malformed frames */
@@ -345,6 +417,17 @@ export class ChatSocket {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: 'chat.message', recipient_id: recipientId, body }))
     }
+  }
+
+  /** Send one call-signaling frame (call.invite / call.offer / …). */
+  sendCall(type: string, payload: Record<string, unknown>) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type, ...payload }))
+    }
+  }
+
+  get isOpen(): boolean {
+    return !!this.ws && this.ws.readyState === WebSocket.OPEN
   }
 
   close() {

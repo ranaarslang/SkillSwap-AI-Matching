@@ -703,12 +703,167 @@ branding, navbar, logo and admin theme are untouched.
   survives restarts; and Django's SQLite AUTOINCREMENT never reuses a
   deleted id, so test users' ids (Zara 10, Omar 11) are resolved live in
   the scripts, never hardcoded.
+- **Rating submit, re-verified explicitly (user clarification 2026-11-11
+  12:19 PKT, "rating hum dy b saken ye b ensure krna"):** the submit
+  flow works end-to-end, not just the display. API (verify-r3.py,
+  re-run after a fresh seed): complete a session → POST a 4★ review →
+  target avg 4.0, count 1, trust 80; duplicate review for the same
+  session → 400; 0 stars → 400; 6 stars → 400; review on a PENDING
+  session → 400. UI (visual-r3.py, re-run 26/26): the ★ Rate button on
+  a completed session opens the Feedback Hub with that partner
+  pre-selected, the star picker + optional text submits, and the trust
+  update shows immediately. Both re-runs passed after a clean seed.
 - **Not verified live:** the parent must live-verify the student side as
   maya/demo1234 on https://skillswap-j5lg.onrender.com (Find people,
   ratings, Rate button) and the admin side with the user's own admin
   password (new-user list, ID/Joined/New). The live admin password is the
   user's own and unknown here, so admin flows were verified locally only
   with the seeded admin account.
+
+## Round 3b — in-app video call, document sharing, code sharing (2026-11-11, voice-note scope)
+
+The user's friend's voice note added four more requirements, implemented
+after round 3 landed (commit `35c536d`): (1) video call INSIDE the app,
+(2) document/file sharing in chat, (3) code sharing in chat, (4) the
+stay-in-app principle — no WhatsApp/external handoff anywhere. The admin
+panel (item 5) was already mandatory and complete; no new admin work was
+needed beyond showing attachments in the admin message view.
+
+### 1. In-app video call (WebRTC, signaling over the existing Channels WS)
+- **Backend (`swaps/consumers.py`):** the consumer now dispatches
+  `call.*` frames alongside `chat.message`. Signaling only — no media
+  touches the server. Flow: `call.invite` → `call.incoming` (with the
+  caller's mini profile) → `call.accept`/`call.decline` →
+  `call.offer`/`call.answer`/`call.ice` relayed between the two
+  participants → `call.end`/`call.ended`. Invite to an offline user →
+  `call.offline`; invite to self, unknown call, or a second concurrent
+  call → `error`. One call per user at a time. A disconnect mid-call
+  notifies the peer (`call.ended`, reason "peer disconnected").
+  Presence (`ONLINE_USERS`) and call state (`ACTIVE_CALLS`) live in
+  module-level dicts — correct for this deployment (one Daphne worker:
+  Render free tier runs a single worker, and the channel layer is the
+  in-memory one); documented in the consumer docstring as a
+  multi-worker limitation (would need Redis).
+- **Frontend (`src/call.ts` `CallManager` + `src/components/CallView.tsx`):**
+  `RTCPeerConnection` with the public Google STUN server, `getUserMedia`
+  (camera + mic), remote/local video, mute + camera toggles, ring (30s),
+  incoming Accept/Decline, End. The overlay renders at App level so a
+  call rings on any tab. Call buttons: chat header ("📹 Video call",
+  disabled while the socket is down) and the profile modal. If the peer
+  connection never reaches `connected` (e.g. a network that blocks the
+  UDP WebRTC needs), a 20s timeout fails loudly ("Connection failed —
+  check your network and try again.") instead of hanging on
+  "Connecting…". Remote autoplay falls back to muted + a "Tap to
+  unmute" button when the browser blocks autoplay with sound.
+- **Verification:** API/WS smoke (`verify-r3b.py`, in-process
+  `WebsocketCommunicator` + live Daphne): invite → incoming, accept →
+  accepted, offer/answer/ICE relayed, end relayed, offline invite →
+  `call.offline`, self-invite → error, unknown type → error, invalid
+  token → 4401 — all pass. Browser (visual-r3b.py, two pages, Chromium
+  fake media): ringing → incoming → Accept → both sides reach
+  `Connecting` (offer/answer exchanged), callee's remote stream object
+  created, End closes the overlay on both sides, the 20s stuck-call
+  timeout fires "Connection failed" and clears by itself — all pass.
+  **NOT verified end-to-end:** the peer connection never reaches
+  `connected` in this sandbox because the VM blocks ALL UDP sockets
+  (`PermissionError` on a plain UDP bind; a pure-JS loopback PC pair
+  also stays at connectionState `new` after 15s with 6/6 ICE
+  candidates exchanged). Media therefore cannot be verified locally;
+  it needs a live two-user test on real devices (phones/browsers on
+  the open internet, where UDP works). See the audit section below.
+
+### 2. Document sharing (file attachments in chat)
+- **Backend:** new `ChatAttachment` model (migration `0002`,
+  `OneToOneField` to `ChatMessage`, randomised uuid filename under
+  `attachments/<year>/<month>/`, original name/size/content-type
+  stored; `delete()` removes the stored file too, so admin message
+  deletion cleans up). `POST /api/messages/upload/` (multipart:
+  `recipient_id`, optional `body`, `file`): 10 MB cap, allowlist =
+  images (jpg/jpeg/png/gif/webp), PDF, docs (doc/docx/txt/md/csv/xls/
+  xlsx/ppt/pptx); anything else → 400. The message is broadcast over
+  WS like any other message. Download: `GET /api/attachments/<id>/
+  download/?t=<signed>` — the token binds the attachment id to one
+  viewer for 1 hour (`django.core.signing`, salt
+  `skillswap-attachment`); the view re-checks the viewer is a
+  participant or staff, serves images inline (so `<img>` works) and
+  other files as downloads, 410 when the file is gone. `/media/` is
+  never exposed directly. **Ephemeral-disk note:** on Render's free
+  tier the disk is wiped on deploy/restart, so an uploaded file
+  survives only until then (same as the old SQLite data before Neon).
+- **Frontend:** 📎 attach button in the chat composer (hidden file
+  input, same allowlist in `accept=`), "Uploading…" state, errors
+  shown inline. Images render as a preview (click opens full size);
+  other files render as a download chip (name + size + Download).
+  The conversation list shows `📎 {filename}` when the last message is
+  a file. The admin user-detail recent-messages list shows the
+  attachment name + size (moderation visibility).
+- **Verification:** API smoke 23/23 (see below); browser: image upload
+  renders in the sender's thread AND arrives live on the peer's side
+  (visual-r3b.py). Validation: exe → 400, oversized → 400, tampered
+  token → 403, non-participant token → 403.
+
+### 3. Code sharing (code snippets in chat)
+- **Backend:** `ChatMessage.code_language` (migration `0002`; allowlist
+  of 16 languages + `other`, validated in both the REST `POST
+  /api/messages/` and the WS `chat.message` handler; invalid → 400 /
+  WS `error`). The payload carries `code_language` everywhere the
+  message does (REST history, WS broadcast, admin detail).
+- **Frontend:** `</>` button in the composer opens a code composer
+  (language select + monospace textarea + "Send code"); the message
+  renders as a dark monospace block with a `Code · {language}` header
+  and a Copy button (clipboard, "Copied ✓" feedback).
+- **Verification:** API smoke (REST + WS round-trip, invalid language
+  → 400) and browser (visual-r3b.py: snippet renders as a code block
+  on the sender's side and arrives live on the peer's side).
+
+### 4. Stay-in-app principle
+- No WhatsApp/external-contact button exists anywhere in the app
+  (verified by grep: no `wa.me` / `whatsapp` references in the
+  frontend or backend). Chat, calls, files, code and sessions all
+  happen inside the application; the Message buttons already keep
+  users in-app. This is a product principle, documented here so a
+  future change doesn't quietly add an external handoff.
+
+### Bug found + fixed while building 3b (duplicate chat messages)
+- **Root cause:** `App.handleSent` sent every message TWICE — once
+  via REST (the server saves the row AND broadcasts it live) and once
+  over the WS (the consumer saved a SECOND row and broadcast that
+  too). Probed live: one UI send created **2 DB rows** and showed
+  **3 times** in the DOM (thread ×2 + list preview). Fix: REST is the
+  single send path; the WS re-send was removed with an explanatory
+  comment. Re-verified: one UI send = 1 DB row, shown once in the
+  thread (visual-r3b.py, unique probe per run).
+
+### Verification (round 3b, coordinator, 2026-11-11)
+- Backend: `manage.py check` clean; migration `0002` applies cleanly
+  on a fresh DB. API/WS smoke (`~/workspace/.scratch-skillswap-r3/
+  verify-r3b.py`, live Daphne :8000 + in-process WS): **23/23 passed**
+  — code message (REST + WS, invalid language → 400), PNG/PDF upload
+  (201 + attachment payload), signed download (200 + exact bytes),
+  exe → 400, oversized → 400, tampered token → 403, non-participant
+  token → 403, REST POST creates exactly 1 row, full call-signaling
+  sequence, offline/self/unknown/invalid-token cases. Two real bugs
+  were found and fixed during this run: `attachment_upload_path`
+  used `instance.created_at` (None before save — `TypeError`) and the
+  WS 4401 test asserted the wrong thing (the close frame arrives as
+  an output event after connect).
+- Frontend: `npm run build` passes (strict TS + Vite; two TS
+  narrowing errors fixed en route).
+- Visual verification: Playwright
+  (`~/workspace/.scratch-skillswap-r3/visual-r3b.py`, vite preview
+  :4173 + local Daphne :8000, clean env, no proxy) — **22/22 passed**
+  at desktop 1280×800 AND 390px phone width: single-row send,
+  code block send + live delivery, image upload + live delivery,
+  call ringing → incoming → Connecting, callee remote stream object,
+  End closes both overlays, 20s stuck-call timeout, profile-modal
+  Video call button, mobile composer (attach + code buttons, no
+  overflow), no page errors anywhere. Screenshots:
+  `~/workspace/.scratch-skillswap-r3/shots-r3b/` (`01`–`06`).
+- **Not verified live:** the parent must live-verify on
+  https://skillswap-j5lg.onrender.com as maya/demo1234 (video call
+  button, file upload, code share) — and, critically, a real two-user
+  video call on real devices, because the media path cannot be
+  verified in this sandbox (UDP blocked; see §1 above).
 
 ## Files
 

@@ -121,6 +121,13 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 
+# Chat file attachments (round 3b). Files are stored under MEDIA_ROOT and
+# served ONLY through the signed download endpoint — /media/ is never
+# exposed directly. NOTE: on Render's free tier this disk is ephemeral
+# (uploads survive until the next deploy/restart).
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ---- CORS (frontend origin) ----
