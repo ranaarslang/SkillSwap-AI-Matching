@@ -178,6 +178,64 @@ export interface AdminUserDetail extends AdminUser {
   recent_messages: ChatMessage[]
 }
 
+// ---- Round 4 admin features (user-approved 2026-11-11) -------------------
+export interface SkillCatalogGroup {
+  label: string
+  skills: { id: number; name: string }[]
+}
+export interface CatalogSkill {
+  id: number
+  name: string
+  group: string
+  is_active: boolean
+  created_at: string
+}
+export interface UserReport {
+  id: number
+  reporter: User
+  reported_user: User
+  reason: string
+  reason_label: string
+  details: string
+  status: 'open' | 'resolved'
+  action_taken: string
+  resolution_note: string
+  resolved_by: User | null
+  resolved_at: string | null
+  created_at: string
+}
+export interface Announcement {
+  id: number
+  title: string
+  body: string
+  created_by: User | null
+  created_at: string
+  expires_at: string | null
+  is_active: boolean
+}
+export interface AuditEntry {
+  id: number
+  admin: User | null
+  action: string
+  target_type: string
+  target_id: number | null
+  target_label: string
+  detail: string
+  created_at: string
+}
+export interface AdminAnalytics {
+  users_per_week: { week: string; count: number }[]
+  users_per_month: { month: string; count: number }[]
+  sessions_by_week: { week: string; pending: number; accepted: number; completed: number; cancelled: number }[]
+  total_matches: number
+  total_sessions: number
+  sessions_completed: number
+  sessions_cancelled: number
+  completion_rate: number
+  total_messages: number
+  total_reviews: number
+}
+
 export class ApiError extends Error {
   status: number
   detail: string
@@ -376,6 +434,61 @@ export const api = {
     request<ChatMessage>(`/admin/message-approvals/${messageId}/approve/`, { method: 'POST', body: JSON.stringify({}) }),
   rejectMessage: (messageId: number) =>
     request<ChatMessage>(`/admin/message-approvals/${messageId}/reject/`, { method: 'POST', body: JSON.stringify({}) }),
+  /** Round 4: the backend skill catalog (public — used by the signup
+   * and profile SkillPicker). Falls back to the hardcoded list when
+   * the request fails. */
+  getSkillCatalog: () => request<SkillCatalogGroup[]>('/skills/'),
+  /** Round 4: report another user (students). */
+  createReport: (body: { reported_user_id: number; reason: string; details?: string }) =>
+    request<UserReport>('/reports/', { method: 'POST', body: JSON.stringify(body) }),
+  /** Round 4: active announcements for all students (dismissible banner). */
+  getAnnouncements: () => request<Announcement[]>('/announcements/'),
+  // Round 4 admin: reports queue
+  getAdminReports: (status?: string) =>
+    request<UserReport[]>(`/admin/reports/${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+  adminResolveReport: (reportId: number, action: string, note?: string) =>
+    request<UserReport>(`/admin/reports/${reportId}/resolve/`, { method: 'POST', body: JSON.stringify({ action, note: note || '' }) }),
+  // Round 4 admin: skills catalog management
+  getAdminSkills: () => request<CatalogSkill[]>('/admin/skills/'),
+  adminCreateSkill: (name: string, group: string) =>
+    request<CatalogSkill>('/admin/skills/', { method: 'POST', body: JSON.stringify({ name, group }) }),
+  adminUpdateSkill: (skillId: number, body: { name?: string; group?: string }) =>
+    request<CatalogSkill>(`/admin/skills/${skillId}/`, { method: 'PUT', body: JSON.stringify(body) }),
+  adminDeleteSkill: (skillId: number) =>
+    request<{ detail: string; label: string }>(`/admin/skills/${skillId}/`, { method: 'DELETE' }),
+  // Round 4 admin: analytics, announcements, audit log
+  getAdminAnalytics: () => request<AdminAnalytics>('/admin/analytics/'),
+  getAdminAnnouncements: () => request<Announcement[]>('/admin/announcements/'),
+  adminCreateAnnouncement: (body: { title: string; body: string; expires_at?: string }) =>
+    request<Announcement>('/admin/announcements/', { method: 'POST', body: JSON.stringify(body) }),
+  adminDeleteAnnouncement: (announcementId: number) =>
+    request<{ detail: string; label: string }>(`/admin/announcements/${announcementId}/`, { method: 'DELETE' }),
+  getAdminAuditLog: (action?: string, q?: string) => {
+    const params = new URLSearchParams()
+    if (action) params.set('action', action)
+    if (q) params.set('q', q)
+    const suffix = params.toString() ? `?${params.toString()}` : ''
+    return request<AuditEntry[]>(`/admin/audit-log/${suffix}`)
+  },
+  /** Round 4 admin: CSV export. Returns the file as a browser download
+   * (raw Response, not JSON). */
+  downloadAdminCsv: async (kind: 'users' | 'sessions' | 'reviews') => {
+    const token = getAccessToken()
+    const res = await fetch(`${API_BASE}/admin/export/${kind}.csv`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!res.ok) throw new ApiError(res.status, 'Could not download the export.')
+    const blob = await res.blob()
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    const stamp = new Date().toISOString().slice(0, 10)
+    a.href = url
+    a.download = `skillswap-${kind}-${stamp}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    window.URL.revokeObjectURL(url)
+  },
 }
 
 // ---- WebSocket live chat helper -------------------------------------------

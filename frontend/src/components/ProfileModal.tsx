@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { MatchProfile, Profile, Review, SessionItem } from '../api'
-import { api, displayName, formatLocation } from '../api'
+import { api, ApiError, displayName, formatLocation } from '../api'
 import { Avatar, Chip, IconClose, IconPin, RatingStars, ScoreBadge, TrustBadge, VerifiedBadge } from './ui'
 
 /** Match fields are optional: directory-search results are plain profiles. */
@@ -32,6 +32,34 @@ interface Props {
  */
 export default function ProfileModal({ profile, isMatch, onClose, onMessage, onCall, hideScore = false, sessions, currentUserId, onRateSession }: Props) {
   const [reviews, setReviews] = useState<Review[] | null>(null)
+  // Round 4: report this user to the admin (students only — never shown
+  // on your own profile or in the admin detail view).
+  const [showReport, setShowReport] = useState(false)
+  const [reportReason, setReportReason] = useState('bad_behaviour')
+  const [reportDetails, setReportDetails] = useState('')
+  const [reportBusy, setReportBusy] = useState(false)
+  const [reportDone, setReportDone] = useState(false)
+  const [reportError, setReportError] = useState('')
+  const isOwnProfile = currentUserId !== undefined && currentUserId === profile.user.id
+
+  async function submitReport(e: React.FormEvent) {
+    e.preventDefault()
+    setReportBusy(true)
+    setReportError('')
+    try {
+      await api.createReport({
+        reported_user_id: profile.user.id,
+        reason: reportReason,
+        details: reportDetails.trim(),
+      })
+      setReportDone(true)
+      setShowReport(false)
+    } catch (err) {
+      setReportError(err instanceof ApiError ? err.detail : 'Could not send the report.')
+    } finally {
+      setReportBusy(false)
+    }
+  }
 
   // The one completed, not-yet-reviewed session with this user — the
   // Rate button below only shows when a genuine rating is possible, so
@@ -251,6 +279,18 @@ export default function ProfileModal({ profile, isMatch, onClose, onMessage, onC
                 📹 Video call
               </button>
             )}
+            {!isOwnProfile && (
+              <button
+                onClick={() => {
+                  setShowReport((v) => !v)
+                  setReportError('')
+                }}
+                className="rounded-lg border border-red-300 px-4 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50"
+                title="Report this user to the admin"
+              >
+                ⚑ Report
+              </button>
+            )}
             <button
               onClick={onClose}
               className="btn-secondary"
@@ -258,6 +298,72 @@ export default function ProfileModal({ profile, isMatch, onClose, onMessage, onC
               Close
             </button>
           </div>
+
+          {/* Round 4: report form — goes to the admin Reports queue. */}
+          {showReport && !isOwnProfile && (
+            <form onSubmit={submitReport} className="mt-3 rounded-xl border border-red-200 bg-red-50 p-4">
+              <h3 className="text-sm font-bold text-slate-800">
+                Report {displayName(profile.user)}
+              </h3>
+              <p className="mt-0.5 text-xs text-slate-500">
+                An admin will review this. Reports are private — the reported user is not told who reported them.
+              </p>
+              <div className="mt-3">
+                <label htmlFor="report-reason" className="mb-1 block text-sm font-medium text-slate-700">
+                  Reason
+                </label>
+                <select
+                  id="report-reason"
+                  value={reportReason}
+                  onChange={(e) => setReportReason(e.target.value)}
+                  className="input"
+                >
+                  <option value="bad_behaviour">Bad behaviour</option>
+                  <option value="fake_skills">Fake skills</option>
+                  <option value="spam">Spam</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div className="mt-3">
+                <label htmlFor="report-details" className="mb-1 block text-sm font-medium text-slate-700">
+                  What happened? (optional)
+                </label>
+                <textarea
+                  id="report-details"
+                  value={reportDetails}
+                  onChange={(e) => setReportDetails(e.target.value)}
+                  placeholder="A sentence or two helps the admin decide."
+                  rows={3}
+                  className="input resize-y"
+                  maxLength={2000}
+                />
+              </div>
+              {reportError && (
+                <p role="alert" className="mt-2 text-sm font-medium text-red-600">{reportError}</p>
+              )}
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="submit"
+                  disabled={reportBusy}
+                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                >
+                  {reportBusy ? 'Sending…' : 'Send report'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowReport(false)}
+                  className="btn-secondary"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+          {reportDone && (
+            <p role="status" className="mt-3 rounded-lg bg-emerald-50 px-3 py-2.5 text-sm text-emerald-700 ring-1 ring-inset ring-emerald-200">
+              Report sent — an admin will review it. Thank you.
+            </p>
+          )}
         </div>
       </div>
     </div>

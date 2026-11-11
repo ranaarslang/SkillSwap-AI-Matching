@@ -82,7 +82,7 @@ environment.
 | Feedback submit returns focus to the profile panel | ⚠️ | **Deviation:** after submitting, the Feedback Hub stays and shows "Thank you" + "All caught up" (so multiple reviews can be given without navigating). The review itself is saved and trust recalculates. |
 | SDD §6.3.3: "Finalize & Track Session" green button | ✅ | Button text matches; booking verified. |
 
-## 6. User-ordered additions beyond the SRS/SDD (rounds 1–3c)
+## 6. User-ordered additions beyond the SRS/SDD (rounds 1–4)
 
 Admin panel, 2-step signup with skill picker, premium dark navbar, Option B
 logo, video call (WebRTC signaling over the existing WebSocket), file and
@@ -91,7 +91,15 @@ sessions, Find people directory search with numeric IDs, Back buttons on
 every sub-view, chat privacy filter (flagged number/link → admin approval
 queue, delivered only if approved), world-country location (ISO 3166 +
 city), stay-in-app principle (no WhatsApp/external-contact button anywhere).
-All implemented and verified locally in rounds 3/3b/3c; see
+Round 4 (2026-11-11): reports/complaints with dismiss/warn/deactivate,
+backend-stored skill catalog managed by the admin (the SkillPicker reads
+it live), analytics charts (users per week/month, sessions by status,
+matches made, completion rate), announcements (dismissible student
+banner), audit log (one row per admin action, via middleware — covers
+the pre-round-4 actions too), CSV exports (users/sessions/reviews), and
+three switchable dark admin-console themes (Midnight Gold default,
+Emerald Noir, Graphite Copper) with the choice persisted per admin.
+All implemented and verified locally in rounds 3/3b/3c/3e/3f/4; see
 `ROUND3-REQUIREMENTS.md` and `BUILD_SUMMARY.md`.
 
 ## 7. Open gaps (carried into the final report)
@@ -112,3 +120,6 @@ All implemented and verified locally in rounds 3/3b/3c; see
 7. **Match scores jitter ±1 between server starts** (78/79, 59/60) — ONNX
    Runtime floating-point nondeterminism on a borderline rounding; the
    invariants (both ≥50, Priya > Leo, +5 same-city bonus) always hold.
+8. **Audit log has no backfill (round 4)** — entries exist only from the
+   round-4 deploy onward; admin actions taken before it were never
+   recorded.

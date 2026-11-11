@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { SKILL_CATALOG, MAX_SKILLS_PER_LIST } from '../skills'
+import { useEffect, useState } from 'react'
+import { api } from '../api'
+import { SKILL_CATALOG, MAX_SKILLS_PER_LIST, type SkillGroup } from '../skills'
 
 interface Props {
   id: string
@@ -12,13 +13,36 @@ interface Props {
 }
 
 /**
- * Skill picker: grouped toggle chips from the curated catalog plus a
- * free-text "add your own skill" input. Selected skills are shown as
- * removable chips above the catalog.
+ * Skill picker: grouped toggle chips from the catalog plus a free-text
+ * "add your own skill" input. Selected skills are shown as removable
+ * chips above the catalog.
+ *
+ * Round 4: the catalog is read from the backend (/api/skills/), so a
+ * skill the admin adds shows up here immediately. The hardcoded list
+ * in skills.ts is only the fallback (and the seed) when the request
+ * fails — e.g. the free-tier backend is still waking up.
  */
 export default function SkillPicker({ id, label, hint, selected, onChange, tone = 'indigo', error }: Props) {
   const [custom, setCustom] = useState('')
   const [customError, setCustomError] = useState('')
+  const [catalog, setCatalog] = useState<SkillGroup[]>(SKILL_CATALOG)
+
+  useEffect(() => {
+    let alive = true
+    api
+      .getSkillCatalog()
+      .then((groups) => {
+        if (!alive) return
+        const mapped = groups.map((g) => ({ label: g.label, skills: g.skills.map((s) => s.name) }))
+        if (mapped.length > 0) setCatalog(mapped)
+      })
+      .catch(() => {
+        /* keep the hardcoded fallback */
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
 
   const selectedLower = new Set(selected.map((s) => s.toLowerCase()))
   const atMax = selected.length >= MAX_SKILLS_PER_LIST
@@ -87,7 +111,7 @@ export default function SkillPicker({ id, label, hint, selected, onChange, tone 
 
       {/* Catalog groups */}
       <div className="mt-3 space-y-3">
-        {SKILL_CATALOG.map((group) => (
+        {catalog.map((group) => (
           <div key={group.label}>
             <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">{group.label}</p>
             <div className="flex flex-wrap gap-1.5">

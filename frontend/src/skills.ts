@@ -1,5 +1,8 @@
 // Curated skill catalog used by the sign-up skills step and the profile
-// editor. A user picks from these and can also add their own free-text
+// editor — and the seed for the backend SkillCatalog table (round 4).
+// The live source of truth is the backend (/api/skills/): SkillPicker
+// fetches it and falls back to this list only when the request fails.
+// A user picks from these and can also add their own free-text
 // skills — everything they pick is stored as a USER_SKILL row and feeds
 // the AI matcher.
 export interface SkillGroup {

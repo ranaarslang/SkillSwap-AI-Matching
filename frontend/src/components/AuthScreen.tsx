@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api, ApiError, ACCESS_KEY, REFRESH_KEY, USER_KEY } from '../api'
 import type { User } from '../api'
+import type { AdminTheme } from './AdminPanel'
 import { COUNTRIES } from '../countries'
 import SkillPicker from './SkillPicker'
 import { IconCheck, IconShield, LogoMark } from './ui'
@@ -11,7 +12,7 @@ const FEATURES = [
   { title: 'Trusted community', text: 'Every completed session builds a trust score, so you always know who you are learning from.' },
 ]
 
-export default function AuthScreen({ onAuthed, variant }: { onAuthed: (user: User, opts?: { adminLogin?: boolean }) => void; variant?: 'admin' }) {
+export default function AuthScreen({ onAuthed, variant, adminTheme = 'gold' }: { onAuthed: (user: User, opts?: { adminLogin?: boolean }) => void; variant?: 'admin'; adminTheme?: AdminTheme }) {
   const isAdmin = variant === 'admin'
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   const [step, setStep] = useState<1 | 2>(1)
@@ -88,14 +89,17 @@ export default function AuthScreen({ onAuthed, variant }: { onAuthed: (user: Use
 
   const inputCls = isAdmin ? 'input-dark' : 'input'
   const labelCls = isAdmin
-    ? 'mb-1 block text-sm font-medium text-slate-300'
+    ? 'mb-1 block text-sm font-medium text-[var(--adm-text)]'
     : 'mb-1 block text-sm font-medium text-slate-700'
   const alertCls = isAdmin
     ? 'rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-300 ring-1 ring-inset ring-red-500/30'
     : 'rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 ring-1 ring-inset ring-red-200'
 
   return (
-    <div className="min-h-screen bg-slate-100 lg:grid lg:grid-cols-2">
+    <div
+      className={isAdmin ? 'min-h-screen bg-[var(--adm-bg)] lg:grid lg:grid-cols-2' : 'min-h-screen bg-slate-100 lg:grid lg:grid-cols-2'}
+      data-admin-theme={isAdmin ? adminTheme : undefined}
+    >
       {/* Brand panel — desktop only */}
       <aside className="relative hidden overflow-hidden bg-gradient-to-br from-indigo-950 via-indigo-900 to-violet-950 px-12 py-12 text-white lg:flex lg:flex-col lg:justify-between">
         {/* Glow orbs */}
@@ -151,20 +155,20 @@ export default function AuthScreen({ onAuthed, variant }: { onAuthed: (user: Use
           <div
             className={
               isAdmin
-                ? 'animate-rise rounded-panel border border-slate-800 bg-slate-950 p-6 shadow-[0_24px_48px_-16px_rgba(0,0,0,0.6)] sm:p-8'
+                ? 'animate-rise rounded-panel border border-[var(--adm-border)] bg-[var(--adm-surface)] p-6 shadow-[0_24px_48px_-16px_rgba(0,0,0,0.6)] sm:p-8'
                 : 'animate-rise rounded-panel border border-slate-200/90 bg-white p-6 shadow-lift sm:p-8'
             }
           >
             {isAdmin ? (
               <div>
                 <div className="flex items-center gap-3">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/30">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--adm-btn-from)] to-[var(--adm-btn-to)] text-white shadow-lg">
                     <IconShield className="h-5 w-5" />
                   </span>
                   <div>
-                    <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-emerald-400">Admin Console</p>
+                    <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--adm-accent)]">Admin Console</p>
                     <h2 className="text-xl font-extrabold tracking-tight text-white">Admin Login</h2>
-                    <p className="text-sm text-slate-400">Staff only — sign in to manage the platform.</p>
+                    <p className="text-sm text-[var(--adm-text-dim)]">Staff only — sign in to manage the platform.</p>
                   </div>
                 </div>
               </div>
@@ -298,7 +302,7 @@ export default function AuthScreen({ onAuthed, variant }: { onAuthed: (user: Use
             )}
 
             {isAdmin ? (
-              <p className="mt-5 rounded-xl border border-slate-800 bg-slate-900 px-3.5 py-2.5 text-sm text-slate-400 shadow-sm">
+              <p className="mt-5 rounded-xl border border-[var(--adm-border)] bg-[var(--adm-surface-2)] px-3.5 py-2.5 text-sm text-[var(--adm-text-dim)] shadow-sm">
                 Staff accounts never appear in student matching. If you are a student, use the normal login instead.
               </p>
             ) : (
@@ -315,7 +319,7 @@ export default function AuthScreen({ onAuthed, variant }: { onAuthed: (user: Use
                   e.preventDefault()
                   window.location.hash = ''
                 }}
-                className="font-semibold text-emerald-400 hover:text-emerald-300"
+                className="font-semibold text-[var(--adm-accent)] hover:text-[var(--adm-accent-text)]"
               >
                 ← Back to student login
               </a>

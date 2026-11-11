@@ -48,6 +48,10 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # Round 4: one AuditLog row per successful mutating /api/admin/*
+    # request by a staff user. Must run after AuthenticationMiddleware
+    # (it reads request.user).
+    "swaps.audit_middleware.AuditLogMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"

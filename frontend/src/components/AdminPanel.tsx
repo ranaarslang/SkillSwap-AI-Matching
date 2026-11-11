@@ -3,17 +3,36 @@ import type { AdminStats, AdminUser, ChatMessage, MatchProfile, Review, SessionI
 import { api, ApiError, displayName, formatLocation } from '../api'
 import { Avatar, Chip, StatusBadge } from './ui'
 import AdminUserDetail from './AdminUserDetail'
+import AdminReports from './AdminReports'
+import AdminSkills from './AdminSkills'
+import AdminAnalytics from './AdminAnalytics'
+import AdminAnnouncements from './AdminAnnouncements'
+import AdminAuditLog from './AdminAuditLog'
+import AdminExport from './AdminExport'
+
+/** Round 4 — the admin console has three switchable dark themes (the
+ * user picks one; the choice persists in localStorage). All three stay
+ * dark and clearly distinct from the light student app; only the
+ * accent combination changes. */
+export type AdminTheme = 'gold' | 'emerald' | 'copper'
+export const ADMIN_THEMES: { id: AdminTheme; label: string; dot: string; hint: string }[] = [
+  { id: 'gold', label: 'Midnight Gold', dot: '#F2B33D', hint: 'Deep midnight navy + warm gold (default)' },
+  { id: 'emerald', label: 'Emerald Noir', dot: '#34D399', hint: 'Deep green-charcoal + emerald' },
+  { id: 'copper', label: 'Graphite Copper', dot: '#E8935A', hint: 'Warm graphite + copper' },
+]
 
 interface Props {
   currentUserId: number
+  adminTheme: AdminTheme
+  onAdminThemeChange: (t: AdminTheme) => void
   onMessage: (profile: MatchProfile) => void
 }
 
-type AdminTab = 'users' | 'sessions' | 'reviews' | 'approvals'
+type AdminTab = 'users' | 'sessions' | 'reviews' | 'approvals' | 'reports' | 'skills' | 'analytics' | 'announcements' | 'audit' | 'export'
 
 const SESSION_STATUSES = ['', 'PENDING', 'ACCEPTED', 'COMPLETED', 'CANCELLED']
 
-export default function AdminPanel({ currentUserId, onMessage }: Props) {
+export default function AdminPanel({ currentUserId, adminTheme, onAdminThemeChange, onMessage }: Props) {
   const [tab, setTab] = useState<AdminTab>('users')
   const [detailUserId, setDetailUserId] = useState<number | null>(null)
   const [stats, setStats] = useState<AdminStats | null>(null)
@@ -211,9 +230,31 @@ export default function AdminPanel({ currentUserId, onMessage }: Props) {
       <div>
         <p className="eyebrow">Staff Only</p>
         <h1 className="page-title mt-1">Admin Panel</h1>
-        <p className="mt-1 text-sm text-slate-400">
+        <p className="mt-1 text-sm text-[var(--adm-text-dim)]">
           Platform overview, user management, sessions and review moderation. Staff only.
         </p>
+        {/* Round 4 — theme picker. Three dark professional combinations;
+            the user taps one and it sticks (localStorage). */}
+        <div className="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label="Admin console theme">
+          <span className="text-xs font-semibold uppercase tracking-wider text-[var(--adm-text-faint)]">Theme</span>
+          {ADMIN_THEMES.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => onAdminThemeChange(t.id)}
+              aria-pressed={adminTheme === t.id}
+              title={t.hint}
+              className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ring-inset transition-colors ${
+                adminTheme === t.id
+                  ? 'bg-[var(--adm-accent-soft)] text-[var(--adm-accent-text)] ring-[var(--adm-accent-ring)]'
+                  : 'text-[var(--adm-text-dim)] ring-[var(--adm-border-strong)] hover:text-[var(--adm-text)]'
+              }`}
+            >
+              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: t.dot }} />
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {error && (
@@ -222,7 +263,7 @@ export default function AdminPanel({ currentUserId, onMessage }: Props) {
         </div>
       )}
       {notice && (
-        <div role="status" className="rounded-lg bg-emerald-500/10 px-3 py-2.5 text-sm text-emerald-300 ring-1 ring-inset ring-emerald-500/30">
+        <div role="status" className="rounded-lg bg-[var(--adm-accent-soft)] px-3 py-2.5 text-sm text-[var(--adm-accent-text)] ring-1 ring-inset ring-[var(--adm-accent-ring)]">
           {notice}
         </div>
       )}
@@ -243,27 +284,34 @@ export default function AdminPanel({ currentUserId, onMessage }: Props) {
 
       {/* Stats */}
       {loading ? (
-        <p className="text-sm text-slate-400">Loading admin data…</p>
+        <p className="text-sm text-[var(--adm-text-dim)]">Loading admin data…</p>
       ) : (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           {statCards.map((s) => (
             <div key={s.label} className="stat-card p-4">
-              <div className="pt-1 text-3xl font-extrabold tracking-tight text-slate-100">{s.value}</div>
-              <div className="mt-0.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">{s.label}</div>
-              <div className="mt-1 text-xs text-slate-400">{s.sub}</div>
+              <div className="pt-1 text-3xl font-extrabold tracking-tight text-[var(--adm-text)]">{s.value}</div>
+              <div className="mt-0.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--adm-text-faint)]">{s.label}</div>
+              <div className="mt-1 text-xs text-[var(--adm-text-dim)]">{s.sub}</div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Section tabs */}
-      <div className="flex gap-1 rounded-lg bg-slate-800 p-1" role="tablist" aria-label="Admin sections">
+      {/* Section tabs — 10 sections now (round 4); wraps to two rows on
+          narrow screens. */}
+      <div className="flex flex-wrap gap-1 rounded-lg bg-[var(--adm-surface-2)] p-1" role="tablist" aria-label="Admin sections">
         {(
           [
             { id: 'users', label: `Users (${users.length})` },
             { id: 'sessions', label: `Sessions (${sessions.length})` },
             { id: 'reviews', label: `Reviews (${reviews.length})` },
             { id: 'approvals', label: `Approvals (${approvals.length})` },
+            { id: 'reports', label: 'Reports' },
+            { id: 'skills', label: 'Skills' },
+            { id: 'analytics', label: 'Analytics' },
+            { id: 'announcements', label: 'Announcements' },
+            { id: 'audit', label: 'Audit log' },
+            { id: 'export', label: 'Export' },
           ] as { id: AdminTab; label: string }[]
         ).map((t) => (
           <button
@@ -273,7 +321,7 @@ export default function AdminPanel({ currentUserId, onMessage }: Props) {
             aria-selected={tab === t.id}
             onClick={() => setTab(t.id)}
             className={`flex-1 rounded-md px-3 py-2 text-sm font-semibold transition-colors ${
-              tab === t.id ? 'bg-gradient-to-r from-emerald-500/15 to-teal-500/10 text-emerald-300 shadow-sm ring-1 ring-inset ring-emerald-500/30' : 'text-slate-400 hover:text-slate-300'
+              tab === t.id ? 'bg-[var(--adm-accent-soft)] text-[var(--adm-accent-text)] shadow-sm ring-1 ring-inset ring-[var(--adm-accent-ring)]' : 'text-[var(--adm-text-dim)] hover:text-[var(--adm-text)]'
             }`}
           >
             {t.label}
@@ -300,14 +348,14 @@ export default function AdminPanel({ currentUserId, onMessage }: Props) {
             </button>
           </div>
           {users.length === 0 ? (
-            <p className="card p-6 text-sm text-slate-400">
+            <p className="card p-6 text-sm text-[var(--adm-text-dim)]">
               {search ? `No users match "${search}".` : 'No users yet.'}
             </p>
           ) : (
             <div className="overflow-x-auto card">
               <table className="w-full min-w-[880px] text-left text-sm">
                 <thead>
-                  <tr className="border-b border-slate-800 bg-slate-800/70 text-xs uppercase tracking-wider text-slate-400">
+                  <tr className="border-b border-[var(--adm-border)] bg-[var(--adm-surface-2)] text-xs uppercase tracking-wider text-[var(--adm-text-dim)]">
                     <th className="px-3 py-2.5 font-semibold">ID</th>
                     <th className="px-3 py-2.5 font-semibold">User</th>
                     <th className="px-3 py-2.5 font-semibold">Joined</th>
@@ -324,40 +372,40 @@ export default function AdminPanel({ currentUserId, onMessage }: Props) {
                     const isSelf = u.user.id === currentUserId
                     const isNew = Date.now() - new Date(u.date_joined).getTime() < 7 * 24 * 60 * 60 * 1000
                     return (
-                      <tr key={u.user.id} className="border-b border-slate-800 last:border-0 hover:bg-slate-800/70">
-                        <td className="px-3 py-2.5 font-mono text-xs font-semibold text-slate-300">{u.user.id}</td>
+                      <tr key={u.user.id} className="border-b border-[var(--adm-border)] last:border-0 hover:bg-[var(--adm-surface-2)]">
+                        <td className="px-3 py-2.5 font-mono text-xs font-semibold text-[var(--adm-text)]">{u.user.id}</td>
                         <td className="px-3 py-2.5">
                           <div className="flex items-center gap-3">
                             <Avatar user={u.user} color={u.avatar_color} size="sm" />
                             <div className="min-w-0">
-                              <p className="font-semibold text-slate-100">
+                              <p className="font-semibold text-[var(--adm-text)]">
                                 {displayName(u.user)}
-                                {u.is_staff && <span className="ml-2 rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Admin</span>}
+                                {u.is_staff && <span className="ml-2 rounded-full bg-[var(--adm-bg)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Admin</span>}
                               </p>
-                              <p className="truncate text-xs text-slate-400">@{u.user.username} · {u.user.email}</p>
+                              <p className="truncate text-xs text-[var(--adm-text-dim)]">@{u.user.username} · {u.user.email}</p>
                             </div>
                           </div>
                         </td>
                         <td className="px-3 py-2.5">
-                          <span className="text-slate-400">{new Date(u.date_joined).toLocaleDateString()}</span>
+                          <span className="text-[var(--adm-text-dim)]">{new Date(u.date_joined).toLocaleDateString()}</span>
                           {isNew && (
-                            <span className="ml-2 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-300 ring-1 ring-inset ring-emerald-500/30">New</span>
+                            <span className="ml-2 rounded-full bg-[var(--adm-accent-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--adm-accent-text)] ring-1 ring-inset ring-[var(--adm-accent-ring)]">New</span>
                           )}
                         </td>
-                        <td className="px-3 py-2.5 text-slate-400">{formatLocation(u) || '—'}</td>
+                        <td className="px-3 py-2.5 text-[var(--adm-text-dim)]">{formatLocation(u) || '—'}</td>
                         <td className="max-w-[180px] px-3 py-2.5">
                           <div className="flex flex-wrap gap-1">
-                            {u.teach_skills.length ? u.teach_skills.map((s) => <Chip key={s}>{s}</Chip>) : <span className="text-slate-500">—</span>}
+                            {u.teach_skills.length ? u.teach_skills.map((s) => <Chip key={s}>{s}</Chip>) : <span className="text-[var(--adm-text-faint)]">—</span>}
                           </div>
                         </td>
                         <td className="max-w-[180px] px-3 py-2.5">
                           <div className="flex flex-wrap gap-1">
-                            {u.learn_skills.length ? u.learn_skills.map((s) => <Chip key={s} tone="emerald">{s}</Chip>) : <span className="text-slate-500">—</span>}
+                            {u.learn_skills.length ? u.learn_skills.map((s) => <Chip key={s} tone="emerald">{s}</Chip>) : <span className="text-[var(--adm-text-faint)]">—</span>}
                           </div>
                         </td>
-                        <td className="px-3 py-2.5 font-semibold text-slate-200">★ {u.trust_score}</td>
+                        <td className="px-3 py-2.5 font-semibold text-[var(--adm-text)]">★ {u.trust_score}</td>
                         <td className="px-3 py-2.5">
-                          <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${u.is_active ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-inset ring-emerald-500/30' : 'bg-red-500/15 text-red-300 ring-1 ring-inset ring-red-500/30'}`}>
+                          <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${u.is_active ? 'bg-[var(--adm-accent-soft)] text-[var(--adm-accent-text)] ring-1 ring-inset ring-[var(--adm-accent-ring)]' : 'bg-red-500/15 text-red-300 ring-1 ring-inset ring-red-500/30'}`}>
                             {u.is_active ? 'Active' : 'Inactive'}
                           </span>
                         </td>
@@ -392,12 +440,12 @@ export default function AdminPanel({ currentUserId, onMessage }: Props) {
       {tab === 'sessions' && (
         <section>
           <div className="mb-3 flex flex-wrap items-center gap-3">
-            <label htmlFor="admin-session-filter" className="text-sm font-semibold text-slate-400">Status</label>
+            <label htmlFor="admin-session-filter" className="text-sm font-semibold text-[var(--adm-text-dim)]">Status</label>
             <select
               id="admin-session-filter"
               value={statusFilter}
               onChange={(e) => filterSessions(e.target.value)}
-              className="input"
+              className="input-dark w-auto"
             >
               {SESSION_STATUSES.map((s) => (
                 <option key={s || 'all'} value={s}>{s === '' ? 'All statuses' : s.charAt(0) + s.slice(1).toLowerCase()}</option>
@@ -405,12 +453,12 @@ export default function AdminPanel({ currentUserId, onMessage }: Props) {
             </select>
           </div>
           {sessions.length === 0 ? (
-            <p className="card p-6 text-sm text-slate-400">No sessions match this filter.</p>
+            <p className="card p-6 text-sm text-[var(--adm-text-dim)]">No sessions match this filter.</p>
           ) : (
             <div className="overflow-x-auto card">
               <table className="w-full min-w-[640px] text-left text-sm">
                 <thead>
-                  <tr className="border-b border-slate-800 bg-slate-800/70 text-xs uppercase tracking-wider text-slate-400">
+                  <tr className="border-b border-[var(--adm-border)] bg-[var(--adm-surface-2)] text-xs uppercase tracking-wider text-[var(--adm-text-dim)]">
                     <th className="px-3 py-2.5 font-semibold">Session</th>
                     <th className="px-3 py-2.5 font-semibold">Partners</th>
                     <th className="px-3 py-2.5 font-semibold">Date</th>
@@ -421,13 +469,13 @@ export default function AdminPanel({ currentUserId, onMessage }: Props) {
                 </thead>
                 <tbody>
                   {sessions.map((s) => (
-                    <tr key={s.id} className="border-b border-slate-800 last:border-0 hover:bg-slate-800/70">
-                      <td className="px-3 py-2.5 font-semibold text-slate-100">{s.title || 'Skill swap session'}</td>
-                      <td className="px-3 py-2.5 text-slate-400">
+                    <tr key={s.id} className="border-b border-[var(--adm-border)] last:border-0 hover:bg-[var(--adm-surface-2)]">
+                      <td className="px-3 py-2.5 font-semibold text-[var(--adm-text)]">{s.title || 'Skill swap session'}</td>
+                      <td className="px-3 py-2.5 text-[var(--adm-text-dim)]">
                         {displayName(s.partner_one)} ↔ {displayName(s.partner_two)}
                       </td>
-                      <td className="px-3 py-2.5 text-slate-400">{new Date(s.calendar_date).toLocaleDateString()}</td>
-                      <td className="px-3 py-2.5 text-slate-400">{s.duration_block}</td>
+                      <td className="px-3 py-2.5 text-[var(--adm-text-dim)]">{new Date(s.calendar_date).toLocaleDateString()}</td>
+                      <td className="px-3 py-2.5 text-[var(--adm-text-dim)]">{s.duration_block}</td>
                       <td className="px-3 py-2.5"><StatusBadge status={s.session_status} /></td>
                       <td className="px-3 py-2.5">
                         {(s.session_status === 'PENDING' || s.session_status === 'ACCEPTED') &&
@@ -458,23 +506,23 @@ export default function AdminPanel({ currentUserId, onMessage }: Props) {
       {tab === 'reviews' && (
         <section>
           {reviews.length === 0 ? (
-            <p className="card p-6 text-sm text-slate-400">No reviews yet.</p>
+            <p className="card p-6 text-sm text-[var(--adm-text-dim)]">No reviews yet.</p>
           ) : (
             <ul className="space-y-3">
               {reviews.map((r) => (
                 <li key={r.id} className="card p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-100">
+                      <p className="text-sm font-semibold text-[var(--adm-text)]">
                         {r.reviewer ? displayName(r.reviewer) : 'Unknown'} → {r.reviewee ? displayName(r.reviewee) : 'Unknown'}
                       </p>
                       <p className="mt-0.5 text-sm font-semibold text-amber-500">
                         {'★'.repeat(r.rating_stars)}{'☆'.repeat(5 - r.rating_stars)}
-                        <span className="ml-2 font-normal text-slate-400">
+                        <span className="ml-2 font-normal text-[var(--adm-text-dim)]">
                           {r.created_at ? new Date(r.created_at).toLocaleDateString() : ''} · Session #{r.session ?? r.session_id}
                         </span>
                       </p>
-                      {r.feedback_text && <p className="mt-1.5 text-sm leading-relaxed text-slate-400">{r.feedback_text}</p>}
+                      {r.feedback_text && <p className="mt-1.5 text-sm leading-relaxed text-[var(--adm-text-dim)]">{r.feedback_text}</p>}
                     </div>
                     {confirmDeleteId === r.id ? (
                       <span className="flex gap-2">
@@ -509,7 +557,7 @@ export default function AdminPanel({ currentUserId, onMessage }: Props) {
       {tab === 'approvals' && (
         <section>
           <div className="mb-3 flex flex-wrap items-center gap-3">
-            <p className="flex-1 text-sm text-slate-400">
+            <p className="flex-1 text-sm text-[var(--adm-text-dim)]">
               Messages held by the chat privacy filter (a phone number or a link). The sender sees
               them as "waiting for admin approval" and the recipient does not see them at all until
               you approve. Approving delivers the message; rejecting means it is never delivered.
@@ -519,24 +567,24 @@ export default function AdminPanel({ currentUserId, onMessage }: Props) {
             </button>
           </div>
           {approvals.length === 0 ? (
-            <p className="card p-6 text-sm text-slate-400">No messages waiting for approval.</p>
+            <p className="card p-6 text-sm text-[var(--adm-text-dim)]">No messages waiting for approval.</p>
           ) : (
             <ul className="space-y-3">
               {approvals.map((m) => (
                 <li key={m.id} className="card p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-100">
+                      <p className="text-sm font-semibold text-[var(--adm-text)]">
                         {displayName(m.sender)} → {displayName(m.recipient)}
                         <span className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-300 ring-1 ring-inset ring-amber-500/30">
                           {m.flag_reason ? `Flagged: ${m.flag_reason}` : 'Flagged'}
                         </span>
                       </p>
-                      <p className="mt-1 text-sm leading-relaxed text-slate-300 break-words">{m.body}</p>
+                      <p className="mt-1 text-sm leading-relaxed text-[var(--adm-text)] break-words">{m.body}</p>
                       {m.attachment && (
-                        <p className="mt-1 text-xs text-slate-400">📎 {m.attachment.name} · {m.attachment.size} bytes</p>
+                        <p className="mt-1 text-xs text-[var(--adm-text-dim)]">📎 {m.attachment.name} · {m.attachment.size} bytes</p>
                       )}
-                      <p className="mt-1 text-xs text-slate-500">
+                      <p className="mt-1 text-xs text-[var(--adm-text-faint)]">
                         {new Date(m.created_at).toLocaleString()} · Message #{m.id}
                       </p>
                     </div>
@@ -563,6 +611,13 @@ export default function AdminPanel({ currentUserId, onMessage }: Props) {
           )}
         </section>
       )}
+      {/* Round 4 sections — each loads its own data. */}
+      {tab === 'reports' && <AdminReports />}
+      {tab === 'skills' && <AdminSkills />}
+      {tab === 'analytics' && <AdminAnalytics />}
+      {tab === 'announcements' && <AdminAnnouncements />}
+      {tab === 'audit' && <AdminAuditLog />}
+      {tab === 'export' && <AdminExport />}
         </>
       )}
     </div>

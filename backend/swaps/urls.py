@@ -1,7 +1,7 @@
 from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from . import views
+from . import admin_r4, views
 
 urlpatterns = [
     # Health (no auth)
@@ -89,5 +89,50 @@ urlpatterns = [
         "admin/message-approvals/<int:message_id>/reject/",
         views.admin_reject_message,
         name="admin_reject_message",
+    ),
+    # Round 4: skill catalog (public, used by the signup/profile
+    # SkillPicker), reports, announcements, admin analytics, audit log,
+    # CSV export.
+    path("skills/", admin_r4.skill_catalog, name="skill_catalog"),
+    path("reports/", admin_r4.create_report, name="create_report"),
+    path("announcements/", admin_r4.announcements, name="announcements"),
+    path("admin/reports/", admin_r4.admin_reports, name="admin_reports"),
+    path(
+        "admin/reports/<int:report_id>/resolve/",
+        admin_r4.admin_resolve_report,
+        name="admin_resolve_report",
+    ),
+    path("admin/skills/", admin_r4.admin_skills, name="admin_skills"),
+    path(
+        "admin/skills/<int:skill_id>/",
+        admin_r4.admin_skill_detail,
+        name="admin_skill_detail",
+    ),
+    path("admin/analytics/", admin_r4.admin_analytics, name="admin_analytics"),
+    path(
+        "admin/announcements/",
+        admin_r4.admin_announcements,
+        name="admin_announcements",
+    ),
+    path(
+        "admin/announcements/<int:announcement_id>/",
+        admin_r4.admin_delete_announcement,
+        name="admin_delete_announcement",
+    ),
+    path("admin/audit-log/", admin_r4.admin_audit_log, name="admin_audit_log"),
+    path(
+        "admin/export/users.csv",
+        admin_r4.admin_export_users,
+        name="admin_export_users",
+    ),
+    path(
+        "admin/export/sessions.csv",
+        admin_r4.admin_export_sessions,
+        name="admin_export_sessions",
+    ),
+    path(
+        "admin/export/reviews.csv",
+        admin_r4.admin_export_reviews,
+        name="admin_export_reviews",
     ),
 ]

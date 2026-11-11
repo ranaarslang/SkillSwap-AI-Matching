@@ -153,12 +153,12 @@ a:focus-visible {
     justify-content: center;
     gap: 0.5rem;
     border-radius: 0.65rem;
-    background: linear-gradient(180deg, #10b981 0%, #059669 100%);
+    background: linear-gradient(180deg, var(--adm-btn-from, #10b981) 0%, var(--adm-btn-to, #059669) 100%);
     padding: 0.625rem 1rem;
     font-size: 0.875rem;
     font-weight: 600;
     color: #fff;
-    box-shadow: 0 1px 2px rgb(16 185 129 / 0.35), 0 8px 18px -6px rgb(16 185 129 / 0.45);
+    box-shadow: 0 1px 2px rgb(16 185 129 / 0.35), 0 8px 18px -6px var(--adm-btn-shadow, rgb(16 185 129 / 0.45));
     transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
   }
   .btn-admin:hover:not(:disabled) {
@@ -174,18 +174,18 @@ a:focus-visible {
     justify-content: center;
     gap: 0.5rem;
     border-radius: 0.65rem;
-    border: 1px solid #334155;
-    background-color: #1e293b;
+    border: 1px solid var(--adm-border-strong, #334155);
+    background-color: var(--adm-surface-2, #1e293b);
     padding: 0.625rem 1rem;
     font-size: 0.875rem;
     font-weight: 600;
-    color: #e2e8f0;
+    color: var(--adm-text, #e2e8f0);
     box-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
     transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
   }
   .btn-admin-secondary:hover:not(:disabled) {
-    background-color: #334155;
-    border-color: #475569;
+    background-color: var(--adm-surface, #334155);
+    border-color: var(--adm-border, #475569);
     transform: translateY(-1px);
   }
   .btn-admin-secondary:disabled {
@@ -215,20 +215,20 @@ a:focus-visible {
   .input-dark {
     width: 100%;
     border-radius: 0.65rem;
-    border: 1px solid #334155;
-    background-color: #0f172a;
+    border: 1px solid var(--adm-input-border, #334155);
+    background-color: var(--adm-input-bg, #0f172a);
     padding: 0.625rem 0.875rem;
     font-size: 0.875rem;
-    color: #f1f5f9;
+    color: var(--adm-text, #f1f5f9);
     box-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
   .input-dark::placeholder {
-    color: #64748b;
+    color: var(--adm-text-faint, #64748b);
   }
   .input-dark:focus {
-    border-color: #10b981;
-    box-shadow: 0 0 0 3px rgb(16 185 129 / 0.22);
+    border-color: var(--adm-accent, #10b981);
+    box-shadow: 0 0 0 3px var(--adm-accent-ring, rgb(16 185 129 / 0.22));
     outline: none;
   }
 
@@ -301,33 +301,111 @@ a:focus-visible {
     opacity: 0.9;
   }
 
+  /* ---- Admin console themes (round 4) -------------------------------- */
+  /* Three switchable dark themes, all clearly distinct from the light
+     student app. The variables live on [data-admin-theme] (set on the
+     app shell in admin view and on the admin login page) and are
+     inherited by everything inside. "gold" is the base: any unknown
+     value falls back to it. The admin identity markers (STAFF badge,
+     "Staff Only" eyebrow, dark canvas) are identical in all three. */
+  [data-admin-theme] {
+    /* Variant A — Midnight Gold (default, strongest): deep midnight
+       navy canvas, warm gold accent. Premium, professional, and the
+       furthest from the student app's light indigo. */
+    --adm-bg: #0a1128;
+    --adm-glow: radial-gradient(50rem 24rem at 85% -10%, rgb(245 179 61 / 0.10), transparent 60%);
+    --adm-surface: #101a33;
+    --adm-surface-2: #17233f;
+    --adm-border: #1f2c4d;
+    --adm-border-strong: #2c3d63;
+    --adm-text: #f1f5f9;
+    --adm-text-dim: #a9b4c8;
+    --adm-text-faint: #7b89a3;
+    --adm-accent: #e8a93d;
+    --adm-accent-text: #fcd34d;
+    --adm-accent-soft: rgb(232 169 61 / 0.13);
+    --adm-accent-ring: rgb(232 169 61 / 0.38);
+    --adm-btn-from: #f59e0b;
+    --adm-btn-to: #d97706;
+    --adm-btn-shadow: rgb(245 158 11 / 0.45);
+    --adm-hairline: linear-gradient(90deg, #f59e0b, #fbbf24, #818cf8);
+    --adm-input-bg: #0d1526;
+    --adm-input-border: #2c3d63;
+  }
+  [data-admin-theme="emerald"] {
+    /* Variant B — Emerald Noir: a polished version of the original
+       green admin look. Deep green-charcoal canvas, emerald accent. */
+    --adm-bg: #071310;
+    --adm-glow: radial-gradient(50rem 24rem at 85% -10%, rgb(16 185 129 / 0.12), transparent 60%);
+    --adm-surface: #0c1f19;
+    --adm-surface-2: #112a21;
+    --adm-border: #1b352b;
+    --adm-border-strong: #27493b;
+    --adm-text: #f0fdf4;
+    --adm-text-dim: #a9c6b8;
+    --adm-text-faint: #6f9482;
+    --adm-accent: #34d399;
+    --adm-accent-text: #6ee7b7;
+    --adm-accent-soft: rgb(16 185 129 / 0.13);
+    --adm-accent-ring: rgb(16 185 129 / 0.38);
+    --adm-btn-from: #10b981;
+    --adm-btn-to: #059669;
+    --adm-btn-shadow: rgb(16 185 129 / 0.45);
+    --adm-hairline: linear-gradient(90deg, #10b981, #14b8a6, #0ea5e9);
+    --adm-input-bg: #0a1a14;
+    --adm-input-border: #27493b;
+  }
+  [data-admin-theme="copper"] {
+    /* Variant C — Graphite Copper: warm graphite canvas, copper
+       accent. Warm and professional, still unmistakably dark. */
+    --adm-bg: #131110;
+    --adm-glow: radial-gradient(50rem 24rem at 85% -10%, rgb(232 138 60 / 0.10), transparent 60%);
+    --adm-surface: #1d1a17;
+    --adm-surface-2: #282219;
+    --adm-border: #332c25;
+    --adm-border-strong: #453b31;
+    --adm-text: #fafaf9;
+    --adm-text-dim: #b9b0a4;
+    --adm-text-faint: #857b6e;
+    --adm-accent: #e8935a;
+    --adm-accent-text: #fdba74;
+    --adm-accent-soft: rgb(232 147 90 / 0.14);
+    --adm-accent-ring: rgb(232 147 90 / 0.38);
+    --adm-btn-from: #e07a3f;
+    --adm-btn-to: #b45309;
+    --adm-btn-shadow: rgb(224 122 63 / 0.45);
+    --adm-hairline: linear-gradient(90deg, #ea580c, #f59e0b, #f472b6);
+    --adm-input-bg: #171410;
+    --adm-input-border: #453b31;
+  }
+
   /* ---- Admin console scope ------------------------------------------- */
   /* Everything inside .admin-console is the dark admin identity: dark
-     surfaces, emerald accent, light text. The student app never uses
+     surfaces, theme accent, light text. The student app never uses
      this scope, so the two looks can never bleed into each other. */
   .admin-console .card {
-    background-color: #0f172a;
-    border-color: #1e293b;
-    color: #e2e8f0;
+    background-color: var(--adm-surface, #0f172a);
+    border-color: var(--adm-border, #1e293b);
+    color: var(--adm-text, #e2e8f0);
     box-shadow: 0 1px 2px rgb(0 0 0 / 0.35), 0 1px 3px rgb(0 0 0 / 0.3);
   }
   .admin-console .stat-card {
-    background-color: #0f172a;
-    border-color: #1e293b;
-    color: #e2e8f0;
+    background-color: var(--adm-surface, #0f172a);
+    border-color: var(--adm-border, #1e293b);
+    color: var(--adm-text, #e2e8f0);
     box-shadow: 0 1px 2px rgb(0 0 0 / 0.35), 0 1px 3px rgb(0 0 0 / 0.3);
   }
   .admin-console .stat-card::before {
-    background: linear-gradient(90deg, #10b981, #14b8a6, #0ea5e9);
+    background: var(--adm-hairline, linear-gradient(90deg, #10b981, #14b8a6, #0ea5e9));
   }
   .admin-console .page-title {
-    color: #f1f5f9;
+    color: var(--adm-text, #f1f5f9);
   }
   .admin-console .page-sub {
-    color: #94a3b8;
+    color: var(--adm-text-dim, #94a3b8);
   }
   .admin-console .eyebrow {
-    color: #34d399;
+    color: var(--adm-accent, #34d399);
   }
 
   /* ---- Motion ---------------------------------------------------------- */

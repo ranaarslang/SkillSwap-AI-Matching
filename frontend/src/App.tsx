@@ -4,7 +4,8 @@ import ProfilePanel from './components/ProfilePanel'
 import Dashboard from './components/Dashboard'
 import ChatHub from './components/ChatHub'
 import FeedbackHub from './components/FeedbackHub'
-import AdminPanel from './components/AdminPanel'
+import AdminPanel, { type AdminTheme } from './components/AdminPanel'
+import AnnouncementsBanner from './components/AnnouncementsBanner'
 import ProfileModal from './components/ProfileModal'
 import CallView from './components/CallView'
 import { CallManager } from './call'
@@ -274,24 +275,35 @@ export default function App() {
   // Staff users get the Admin entry; everyone else never sees it.
   const visibleTabs: TabDef[] = user?.is_staff ? [...TABS, ADMIN_TAB] : TABS
 
-  // The admin area is a different product surface: a dark console with an
-  // emerald accent, so it can never be mistaken for the student app.
+  // The admin area is a different product surface: a dark console with a
+  // switchable theme (round 4 — Midnight Gold default, Emerald Noir,
+  // Graphite Copper), so it can never be mistaken for the student app.
+  // The choice persists in localStorage; the user picks it in the
+  // Admin Panel header.
   const isAdminView = tab === 'admin' && !!user?.is_staff
+  const [adminTheme, setAdminTheme] = useState<AdminTheme>(() => {
+    const t = window.localStorage.getItem('skillswap-admin-theme')
+    return t === 'emerald' || t === 'copper' ? t : 'gold'
+  })
+  useEffect(() => {
+    window.localStorage.setItem('skillswap-admin-theme', adminTheme)
+  }, [adminTheme])
 
   if (!authed || !user) {
-    return <AuthScreen variant={adminLogin ? 'admin' : undefined} onAuthed={handleAuthed} />
+    return <AuthScreen variant={adminLogin ? 'admin' : undefined} adminTheme={adminTheme} onAuthed={handleAuthed} />
   }
 
   return (
     <div
-      className={`min-h-screen ${isAdminView ? 'bg-slate-950 text-slate-200' : ''}`}
-      style={isAdminView ? { backgroundImage: 'radial-gradient(50rem 24rem at 85% -10%, rgba(16,185,129,0.10), transparent 60%)' } : undefined}
+      className={`min-h-screen ${isAdminView ? 'bg-[var(--adm-bg)] text-[var(--adm-text)]' : ''}`}
+      data-admin-theme={isAdminView ? adminTheme : undefined}
+      style={isAdminView ? { backgroundImage: 'var(--adm-glow)' } : undefined}
     >
       {/* Top bar — flex-wrap so the search input stays visible on phone widths */}
       <header
         className={`sticky top-0 z-40 border-b backdrop-blur ${
           isAdminView
-            ? 'border-slate-800 bg-slate-950/95 shadow-[0_1px_12px_rgba(0,0,0,0.45)]'
+            ? 'border-[var(--adm-border)] bg-[var(--adm-bg)]/95 shadow-[0_1px_12px_rgba(0,0,0,0.45)]'
             : 'border-violet-400/20 bg-gradient-to-r from-indigo-950 via-[#1b1740] to-violet-950 shadow-[0_8px_30px_-6px_rgba(30,27,75,0.7)]'
         }`}
       >
@@ -307,12 +319,12 @@ export default function App() {
         <div className="relative mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3">
           {isAdminView ? (
             <button onClick={() => setTab('dashboard')} className="flex shrink-0 items-center gap-2.5 text-left" aria-label="Admin Console — back to student app">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/30">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--adm-btn-from)] to-[var(--adm-btn-to)] text-white shadow-lg">
                 <IconShield className="h-5 w-5" />
               </span>
               <span className="leading-tight">
                 <span className="block text-[15px] font-extrabold tracking-tight text-white">Admin Console</span>
-                <span className="block text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-400">Skill Swap Platform</span>
+                <span className="block text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--adm-accent)]">Skill Swap Platform</span>
               </span>
             </button>
           ) : (
@@ -341,8 +353,8 @@ export default function App() {
             {isAdminView ? (
               <>
                 <Avatar user={user} color={profile?.avatar_color} size="sm" />
-                <span className="hidden text-sm font-semibold text-slate-200 sm:block">{displayName(user)}</span>
-                <span className="hidden rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-emerald-300 ring-1 ring-inset ring-emerald-500/30 sm:block">
+                <span className="hidden text-sm font-semibold text-[var(--adm-text)] sm:block">{displayName(user)}</span>
+                <span className="hidden rounded-full bg-[var(--adm-accent-soft)] px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-[var(--adm-accent-text)] ring-1 ring-inset ring-[var(--adm-accent-ring)] sm:block">
                   Staff
                 </span>
               </>
@@ -369,7 +381,7 @@ export default function App() {
         <nav className="hidden w-64 shrink-0 md:block" aria-label="Main">
           <div className="sticky top-[76px] space-y-6">
             <div>
-              <p className={`mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider ${isAdminView ? 'text-emerald-400/80' : 'text-slate-400'}`}>
+              <p className={`mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider ${isAdminView ? 'text-[var(--adm-accent)] opacity-80' : 'text-slate-400'}`}>
                 {isAdminView ? 'Console' : 'Menu'}
               </p>
               <ul className="space-y-1">
@@ -381,10 +393,10 @@ export default function App() {
                       className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-all ${
                         tab === t.id
                           ? isAdminView
-                            ? 'bg-emerald-500/15 text-emerald-300 shadow-sm ring-1 ring-inset ring-emerald-500/30'
+                            ? 'bg-[var(--adm-accent-soft)] text-[var(--adm-accent-text)] shadow-sm ring-1 ring-inset ring-[var(--adm-accent-ring)]'
                             : 'bg-gradient-to-r from-indigo-50 to-violet-50 text-indigo-700 shadow-sm ring-1 ring-inset ring-indigo-100'
                           : isAdminView
-                            ? 'text-slate-400 hover:bg-white/5 hover:text-slate-100'
+                            ? 'text-[var(--adm-text-dim)] hover:bg-white/5 hover:text-[var(--adm-text)]'
                             : 'text-slate-600 hover:bg-white hover:text-slate-900 hover:shadow-sm'
                       }`}
                     >
@@ -440,7 +452,7 @@ export default function App() {
                 <IconLogout className="h-4 w-4" /> Log out
               </button>
             </div>
-            <p className={`px-3 text-[11px] leading-relaxed ${isAdminView ? 'text-slate-500' : 'text-slate-400'}`}>
+            <p className={`px-3 text-[11px] leading-relaxed ${isAdminView ? 'text-[var(--adm-text-faint)]' : 'text-slate-400'}`}>
               {isAdminView
                 ? 'Admin Console — staff only. Every action here is an admin action.'
                 : 'Skill Swap Platform with AI Matching — teach what you know, learn what you don’t.'}
@@ -456,7 +468,7 @@ export default function App() {
           {isAdminView && (
             <button
               onClick={() => setTab('dashboard')}
-              className="mb-4 inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-semibold text-slate-200 md:hidden"
+              className="mb-4 inline-flex items-center gap-1.5 rounded-lg border border-[var(--adm-border-strong)] bg-[var(--adm-surface)] px-3 py-2 text-sm font-semibold text-[var(--adm-text)] md:hidden"
               aria-label="Back to student app"
             >
               ← Back to student app
@@ -467,6 +479,8 @@ export default function App() {
               {toast}
             </div>
           )}
+          {/* Round 4: admin announcements — student views only. */}
+          {!isAdminView && <AnnouncementsBanner />}
           {tab === 'profile' && (
             <ProfilePanel
               user={user}
@@ -530,6 +544,8 @@ export default function App() {
           {tab === 'admin' && user.is_staff && (
             <AdminPanel
               currentUserId={user.id}
+              adminTheme={adminTheme}
+              onAdminThemeChange={setAdminTheme}
               onMessage={openChatWith}
             />
           )}

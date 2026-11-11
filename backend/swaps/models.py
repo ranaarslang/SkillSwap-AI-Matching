@@ -243,3 +243,136 @@ def recalculate_trust_score(user):
     profile.trust_score = 100 if avg is None else round(avg / 5 * 100)
     profile.save(update_fields=["trust_score"])
     return profile.trust_score
+
+
+# ------------------------------------------------------------------ round 4
+# Admin-panel additions (user-approved 2026-11-11): user reports,
+# backend-stored skill catalog, announcements, audit log. Analytics and
+# CSV export are computed from the existing tables (no new model needed).
+
+
+class SkillCatalog(models.Model):
+    """One row per catalog skill (round 4). The SkillPicker reads this
+    table from the backend instead of a hardcoded list, so an admin can
+    add / rename / remove skills and every signup + profile edit sees
+    the change. `is_active=False` is a soft remove: users who already
+    picked the skill keep their USER_SKILL rows (free-text values)."""
+
+    name = models.CharField(max_length=120, unique=True)
+    group = models.CharField(max_length=80, default="General")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
+
+    def __str__(self):
+        return f"SkillCatalog({self.name}, {self.group})"
+
+
+class UserReport(models.Model):
+    """A student reporting another user (round 4). The admin resolves it
+    from the Reports queue: dismiss, warn (note only), or deactivate the
+    reported user. Stored in the DB with reporter/reported/reason/text."""
+
+    class Reason(models.TextChoices):
+        BAD_BEHAVIOUR = "bad_behaviour", "Bad behaviour"
+        FAKE_SKILLS = "fake_skills", "Fake skills"
+        SPAM = "spam", "Spam"
+        OTHER = "other", "Other"
+
+    class Status(models.TextChoices):
+        OPEN = "open", "Open"
+        RESOLVED = "resolved", "Resolved"
+
+    class Action(models.TextChoices):
+        DISMISSED = "dismissed", "Dismissed"
+        WARNED = "warned", "Warned"
+        DEACTIVATED = "deactivated", "User deactivated"
+
+    reporter = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="reports_made",
+    )
+    reported_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="reports_received",
+    )
+    reason = models.CharField(max_length=20, choices=Reason.choices)
+    details = models.TextField(blank=True, default="")
+    status = models.CharField(
+        max_length=10, choices=Status.choices, default=Status.OPEN
+    )
+    action_taken = models.CharField(
+        max_length=20, choices=Action.choices, blank=True, default=""
+    )
+    resolution_note = models.TextField(blank=True, default="")
+    resolved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reports_resolved",
+    )
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return (
+            f"Report({self.reporter.username} -> {self.reported_user.username}, "
+            f"{self.reason}, {self.status})"
+        )
+
+
+class Announcement(models.Model):
+    """An admin announcement (round 4): shown to all students as a
+    dismissible banner until deleted or expired."""
+
+    title = models.CharField(max_length=200)
+    body = models.TextField()
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="announcements_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Announcement({self.title})"
+
+
+class AuditLog(models.Model):
+    """One row per admin action (round 4). Written by the audit
+    middleware for every successful mutating /api/admin/* request, so
+    no admin view has to remember to log itself."""
+
+    admin = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="audit_entries",
+    )
+    action = models.CharField(max_length=80)
+    target_type = models.CharField(max_length=40, blank=True, default="")
+    target_id = models.IntegerField(null=True, blank=True)
+    target_label = models.CharField(max_length=200, blank=True, default="")
+    detail = models.CharField(max_length=300, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["-created_at", "action"])]
+
+    def __str__(self):
+        return f"Audit({self.admin}, {self.action}, {self.target_label})"
