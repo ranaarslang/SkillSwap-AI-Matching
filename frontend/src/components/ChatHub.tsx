@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChatMessage, Conversation, MatchProfile, SessionItem, User, WsStatus } from '../api'
 import { api, ApiError, CODE_LANGUAGES, attachmentUrl, displayName, formatFileSize } from '../api'
 import { Avatar, StatusBadge, fmtDate } from './ui'
@@ -116,6 +116,26 @@ export default function ChatHub(props: Props) {
   const [schedOk, setSchedOk] = useState('')
   const [schedBusy, setSchedBusy] = useState(false)
   const [sessionActionError, setSessionActionError] = useState('')
+
+  // Sessions already reviewed by me — hide the Rate button for them (same
+  // server-seeded list the Feedback Hub uses: GET /api/reviews/?author=me).
+  // Refetched when the sessions list changes, so a review submitted in the
+  // Feedback Hub is reflected as soon as the user comes back here.
+  const [reviewedSessionIds, setReviewedSessionIds] = useState<number[]>([])
+  useEffect(() => {
+    let cancelled = false
+    api.getMyReviews()
+      .then((mine) => {
+        if (cancelled) return
+        setReviewedSessionIds(
+          mine.map((r) => r.session).filter((s): s is number => typeof s === 'number'),
+        )
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [sessions])
 
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase()
@@ -303,7 +323,7 @@ export default function ChatHub(props: Props) {
             ) : (
               <>
                 <header className="flex items-center gap-3 px-4 py-3 border-b border-slate-200 flex-wrap">
-                  <button onClick={() => props.onSelectPeer(null)} className="md:hidden text-indigo-600 text-sm font-semibold" aria-label="Back to conversations">
+                  <button onClick={() => props.onSelectPeer(null)} className="text-indigo-600 text-sm font-semibold" aria-label="Back to conversations">
                     ← Back
                   </button>
                   <Avatar user={selectedPeer} color={peerProfile?.avatar_color} />
@@ -513,7 +533,7 @@ export default function ChatHub(props: Props) {
                     {s.session_status === 'ACCEPTED' && (
                       <button onClick={() => setSessionStatus(s, 'COMPLETED')} className="btn-primary">Mark complete</button>
                     )}
-                    {s.session_status === 'COMPLETED' && (
+                    {s.session_status === 'COMPLETED' && !reviewedSessionIds.includes(s.id) && (
                       <button onClick={() => props.onRateSession(s)} className="rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2">★ Rate {displayName(other).split(' ')[0]}</button>
                     )}
                     {s.session_status === 'PENDING' && !iAmPartnerTwo && (

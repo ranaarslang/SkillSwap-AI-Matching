@@ -988,6 +988,52 @@ is in `ROUND3-REQUIREMENTS.md`, committed with this round for the viva.
   overflow at 390px, zero page errors. Screenshots:
   `~/workspace/.scratch-skillswap-r3/shots-r3c/` (`01`–`11`).
 
+## Round 3d — fix round (2026-11-11, from the parent's live check 14:25–14:28 PKT)
+Two real issues found live on round 3c, fixed here; one investigated.
+
+### Issue 1 — Rate button still offered for already-reviewed sessions
+The Feedback Hub correctly hid reviewed partners (server-seeded list), but
+the Chat & Scheduler Hub "My sessions" list showed "★ Rate Sana" on
+completed sessions maya had already reviewed. Fix: `ChatHub.tsx` now
+seeds the same list (`GET /api/reviews/?author=me`) on mount and whenever
+the sessions list changes, and hides the Rate button for reviewed session
+ids. The server still rejects a duplicate review with 400 as a backstop.
+
+### Issue 2 — No Back button in the chat view (desktop)
+The conversation header's "← Back" was `md:hidden` (mobile only), so the
+live desktop check found no way back except the left navigation. Fix:
+the button now shows at ALL widths; it deselects the peer and returns to
+the conversations list / "Pick a conversation" empty state.
+
+### Issue 3 — investigated: video-call button disabled, pill "Offline"
+Root cause found in `ChatSocket` (`api.ts`): reconnects were capped at 5
+retries (~30s total) and reused the token captured at connect time.
+Two ways that strands the socket offline: (a) a cold free-tier backend
+takes ~30–60s to wake — longer than the 5-retry window; (b) the access
+token lives 60 min, so a drop after an hour retried on a dead token
+(server closes 4401) and then gave up. Fix (small): retries are now
+unbounded with backoff capped at 15s, and every attempt first refreshes
+the access token (`refreshAccessToken`, exported wrapper around the
+existing `tryRefresh`) and reconnects with the fresh token. The "Offline"
+pill and the disabled call button are correct behaviour while the socket
+is down; the socket now recovers on its own. A real two-user video call
+is still NOT verified (known gap — needs a live two-device test).
+
+### Verification (round 3d, coordinator, 2026-11-11)
+- `npx tsc --noEmit` clean; `manage.py check` clean.
+- Playwright (`~/workspace/.scratch-skillswap-r3/verify-r3d.py`, vite
+  preview :4173 + local Daphne :8000) — **15/15 passed** as maya
+  (demo1234), desktop 1280×800 + 390px: no "★ Rate Sana" in My sessions
+  (completed Sana session still listed); Feedback Hub "All caught up";
+  duplicate review via API still 400; Back button visible + working at
+  both widths; socket Live → Offline while Daphne is down 40s → Live
+  again after restart with NO reload; socket recovers Live with a
+  corrupted access token (refresh path) and the user stays logged in;
+  zero page errors. Screenshots: `~/workspace/.scratch-skillswap-r3/shots-r3d/`.
+  (First run was 14/15: the Sana-list check ran before `loadAll()` had
+  finished — the sessions list was still empty, not a product bug. The
+  script now waits for a non-zero session count first.)
+
 ## Quality audit (round 3c, 2026-11-11) — traceability + clean-clone run
 
 - `TRACEABILITY.md` (committed with this round): every SRS REQ-01–05 +
@@ -1036,12 +1082,14 @@ is in `ROUND3-REQUIREMENTS.md`, committed with this round for the viva.
 - **Open gaps (see TRACEABILITY.md §7):** video-call media not verified
   end-to-end (sandbox blocks UDP — needs a live two-user test on real
   devices); latency targets unmeasured (500 ms matching / 100 ms
-  message); browser coverage is Chromium only; WS reconnect not
-  exercised by actually dropping a socket; W3C markup not
+  message); browser coverage is Chromium only; W3C markup not
   validator-checked; Render free-tier limits (backend sleeps after
   idle, uploaded files live on ephemeral disk); match scores jitter
   ±1 between server starts (ONNX floating-point nondeterminism;
   invariants always hold).
+  (Closed in round 3d: WS reconnect IS now exercised by actually
+  dropping the socket — 40s outage + corrupted-token recovery, both
+  back to Live with no reload.)
 - **Deviations confirmed in the audit:** SDD §5 "AI Computation Layer"
   as an isolated microservice → in-process ONNX matcher (torch cannot
   run on the 512 MB free tier); SDD §6.3.1 comma-separated skill text

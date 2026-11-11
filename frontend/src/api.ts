@@ -232,6 +232,12 @@ async function tryRefresh(): Promise<boolean> {
   return refreshPromise
 }
 
+/** Refresh the stored access token (used by the chat socket before each
+ * reconnect attempt, so a drop after the 60-minute token lifetime can't
+ * strand the socket on a dead token). Returns true when a fresh token
+ * was stored. */
+export const refreshAccessToken = () => tryRefresh()
+
 async function request<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
   const token = getAccessToken()
   const headers: Record<string, string> = {
@@ -371,14 +377,19 @@ export const api = {
 
 // ---- WebSocket live chat helper -------------------------------------------
 // Connects to ws(s)://<api-host>/ws/chat/?token=<JWT access token>.
-// Reconnects automatically on drop (max 5 retries, exponential backoff).
+// Reconnects automatically on drop: exponential backoff capped at 15s,
+// retrying until the socket is closed by us, and refreshing the access
+// token before every attempt. Two failure modes made the old 5-retry
+// version strand the socket offline: (a) a cold free-tier backend takes
+// ~30-60s to wake, longer than the ~30s the 5 retries covered; (b) the
+// access token lives 60 min, so a drop after an hour retried on a dead
+// token (server closes 4401) and then gave up.
 export type WsStatus = 'connecting' | 'live' | 'offline'
 
 export class ChatSocket {
   private ws: WebSocket | null = null
   private retries = 0
   private closedByUs = false
-  private readonly maxRetries = 5
   onMessage: ((msg: ChatMessage) => void) | null = null
   onStatus: ((s: WsStatus) => void) | null = null
   onReconnect: (() => void) | null = null
@@ -400,7 +411,7 @@ export class ChatSocket {
     try {
       ws = new WebSocket(url)
     } catch {
-      this.scheduleReconnect(token)
+      this.scheduleReconnect()
       return
     }
     this.ws = ws
@@ -426,7 +437,7 @@ export class ChatSocket {
       this.ws = null
       if (!this.closedByUs) {
         this.onStatus?.('offline')
-        this.scheduleReconnect(token)
+        this.scheduleReconnect()
       }
     }
     ws.onerror = () => {
@@ -434,12 +445,21 @@ export class ChatSocket {
     }
   }
 
-  private scheduleReconnect(token: string) {
-    if (this.closedByUs || this.retries >= this.maxRetries) return
+  private scheduleReconnect() {
+    if (this.closedByUs) return
     const delay = Math.min(1000 * 2 ** this.retries, 15000)
     this.retries += 1
-    window.setTimeout(() => {
-      if (!this.closedByUs) this.openSocket(token)
+    window.setTimeout(async () => {
+      if (this.closedByUs) return
+      // Fresh token for every attempt: the stored access token may have
+      // expired while the socket was down (60-minute lifetime), and the
+      // refresh endpoint is what revives it. A failed refresh (backend
+      // still asleep) is fine — we retry again after the next delay.
+      await refreshAccessToken()
+      if (this.closedByUs) return
+      const token = getAccessToken()
+      if (!token) return
+      this.openSocket(token)
     }, delay)
   }
 
